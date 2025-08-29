@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>WebSocket Test</title>
+</head>
+<body>
+<h1>WebSocket Test</h1>
+<div id="messages"></div>
+<input type="text" id="tokenInput" placeholder="Введите JWT токен">
+<button onclick="connectWebSocket()">Подключиться с токеном</button>
+<input type="text" id="messageInput" placeholder="Введите сообщение">
+<button onclick="sendMessage()">Отправить</button>
+
+<script>
+  let socket;
+  let token = "";
+
+  function connectWebSocket() {
+    token = document.getElementById('tokenInput').value.trim();
+
+    if (!token) {
+      alert("Пожалуйста, введите JWT токен");
+      return;
+    }
+
+    socket = new WebSocket('ws://localhost:8091/ws');
+
+    socket.onopen = function(event) {
+      console.log("WebSocket connected");
+      document.getElementById('messages').innerHTML += "<p>Подключено к WebSocket</p>";
+
+
+      const authMessage = {
+        type: "JOIN_CHAT",
+        payload: token
+      };
+      socket.send(JSON.stringify(authMessage));
+    };
+
+    socket.onmessage = function(event) {
+      const message = JSON.parse(event.data);
+      console.log("Received:", message);
+      document.getElementById('messages').innerHTML +=
+              `<p><strong>${message.type}:</strong> ${JSON.stringify(message.payload)}</p>`;
+    };
+
+    socket.onclose = function(event) {
+      console.log("WebSocket closed");
+      document.getElementById('messages').innerHTML += "<p>Отключено от WebSocket</p>";
+    };
+
+    socket.onerror = function(error) {
+      console.log("WebSocket error:", error);
+      document.getElementById('messages').innerHTML += "<p>Ошибка WebSocket</p>";
+    };
+  }
+
+  function sendMessage() {
+    const input = document.getElementById('messageInput');
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const message = {
+        type: "SEND_MESSAGE",
+        payload: {
+          chatId: 1,
+          content: input.value
+        }
+      };
+      socket.send(JSON.stringify(message));
+      input.value = '';
+    } else {
+      alert("WebSocket не подключен");
+    }
+  }
+</script>
+</body>
+</html>

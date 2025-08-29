@@ -1,0 +1,22 @@
+websocket:
+  port: 8091
+
+  jwt:
+    secret: SYDLF_52DangerKey_SYDLF_9911894325962389476582937465986348957632897562387ww7sfusdfy9374hguif738794fgu9iw3g4f987uswuhfiuGIUDS9GDUSWHTPIWEHYS0DFS098DF98SDFSHDFUSH9374FISDU87SADASUDGHGHAISD7A9OSD823UGHRUIHGSDW9D78Y238RUIOSWADHFOUWHSSDFDDUHWWF9384FGSD
+
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: websocket-service-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: latest
+
+  main:
+    web-application-type: none
+
+logging:
+  level:
+    websocket: INFO
+    org.apache.kafka: WARN
