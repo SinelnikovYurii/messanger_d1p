@@ -33,7 +33,7 @@ public class AuthServiceClient {
 
 
             ResponseEntity<Long> response = restTemplate.exchange(
-                    authServiceUrl + "/api/auth/auth/me",  // Правильный путь!
+                    authServiceUrl + "/api/auth/me",  // Правильный путь!
                     HttpMethod.GET,
                     entity,
                     Long.class

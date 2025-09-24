@@ -31,6 +31,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Добавлено: включение CORS
                 .authorizeHttpRequests(authz -> authz
                         .requestMatchers("/api/auth/**", "/health").permitAll()
+                        .requestMatchers("/api/**").authenticated() // Все остальные API endpoints требуют аутентификации
                         .anyRequest().authenticated()
                 )
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
