@@ -7,6 +7,34 @@ spring:
     username: postgres
     password: 9911
     driver-class-name: org.postgresql.Driver
+  application:
+    name: api-gateway
+    cloud:
+      gateway:
+        routes:
+          # Маршрут для WebSocket
+          - id: websocket_route
+            uri: ws://localhost:8092
+            predicates:
+              - Path=/ws/**
+            filters:
+              - TokenRelay=
+              - RewritePath=/ws/(?<segment>.*), /ws/$\{segment}
+
+          # Маршруты для REST API
+          - id: auth_service
+            uri: http://localhost:8081
+            predicates:
+              - Path=/auth/**
+            filters:
+              - RewritePath=/auth/(?<segment>.*), /$\{segment}
+
+          - id: message_service
+            uri: http://localhost:8092
+            predicates:
+              - Path=/api/messages/**
+            filters:
+              - RewritePath=/api/messages/(?<segment>.*), /api/messages/$\{segment}
 
   jpa:
     hibernate:
@@ -30,10 +58,24 @@ spring:
       exclude:
         - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
 
-
+security:
+  oauth2:
+    client:
+      provider:
+        keycloak:
+          issuer-uri: http://localhost:8080/realms/master
+      registration:
+        keycloak:
+          client-id: messanger-client
+          client-secret: your-secret
 
 auth-service:
   url: http://localhost:8081
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka
 
 logging:
   level:
