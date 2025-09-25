@@ -1,43 +1,61 @@
 package com.messenger.gateway.service;
 
-
-import com.messenger.gateway.model.DTO.UserDto;
-import com.messenger.gateway.model.User;
-import com.messenger.gateway.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import java.util.List;
-import java.util.stream.Collectors;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserService {
 
-    private final UserRepository userRepository;
+    @Value("${user-service.url:http://localhost:8085}")
+    private String userServiceUrl;
 
-    public List<UserDto> getAllUsers() {
-        return userRepository.findAll().stream()
-                .map(this::convertToDto)
-                .collect(Collectors.toList());
+    private final WebClient.Builder webClientBuilder;
+
+    public Flux<Object> getAllUsers(String token) {
+        return webClientBuilder.build()
+                .get()
+                .uri(userServiceUrl + "/api/users")
+                .header("Authorization", "Bearer " + token)
+                .retrieve()
+                .bodyToFlux(Object.class)
+                .doOnError(error -> log.error("Error fetching all users: {}", error.getMessage()));
     }
 
-    public UserDto getUserById(Long id) {
-        return userRepository.findById(id)
-                .map(this::convertToDto)
-                .orElse(null);
+    public Mono<Object> getUserById(Long id, String token) {
+        return webClientBuilder.build()
+                .get()
+                .uri(userServiceUrl + "/api/users/" + id)
+                .header("Authorization", "Bearer " + token)
+                .retrieve()
+                .bodyToMono(Object.class)
+                .doOnError(error -> log.error("Error fetching user by id {}: {}", id, error.getMessage()));
     }
 
-    public User getUserEntityById(Long id) {
-        return userRepository.findById(id).orElse(null);
+    public Mono<Object> updateUser(Long id, Object userRequest, String token) {
+        return webClientBuilder.build()
+                .put()
+                .uri(userServiceUrl + "/api/users/" + id)
+                .header("Authorization", "Bearer " + token)
+                .bodyValue(userRequest)
+                .retrieve()
+                .bodyToMono(Object.class)
+                .doOnError(error -> log.error("Error updating user {}: {}", id, error.getMessage()));
     }
 
-    private UserDto convertToDto(User user) {
-        UserDto dto = new UserDto();
-        dto.setId(user.getId());
-        dto.setUsername(user.getUsername());
-        dto.setEmail(user.getEmail());
-        dto.setFirstName(user.getFirstName());
-        dto.setLastName(user.getLastName());
-        return dto;
+    public Flux<Object> searchUsers(String query, String token) {
+        return webClientBuilder.build()
+                .get()
+                .uri(userServiceUrl + "/api/users/search?q=" + query)
+                .header("Authorization", "Bearer " + token)
+                .retrieve()
+                .bodyToFlux(Object.class)
+                .doOnError(error -> log.error("Error searching users: {}", error.getMessage()));
     }
 }

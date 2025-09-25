@@ -7,8 +7,12 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.codec.http.websocketx.extensions.compression.WebSocketServerCompressionHandler;
+import io.netty.handler.codec.http.cors.CorsConfig;
+import io.netty.handler.codec.http.cors.CorsConfigBuilder;
+import io.netty.handler.codec.http.cors.CorsHandler;
 import websocket.handler.WebSocketFrameHandler;
 import websocket.service.JwtAuthService;
 
@@ -26,11 +30,18 @@ public class WebSocketServerInitializer extends ChannelInitializer<SocketChannel
     protected void initChannel(SocketChannel ch) throws Exception {
         ChannelPipeline pipeline = ch.pipeline();
 
+        CorsConfig corsConfig = CorsConfigBuilder.forAnyOrigin()
+                .allowNullOrigin()
+                .allowCredentials()
+                .allowedRequestHeaders("*")
+                .allowedRequestMethods(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.OPTIONS)
+                .build();
+        pipeline.addLast(new CorsHandler(corsConfig));
 
         pipeline.addLast(new HttpServerCodec());
         pipeline.addLast(new HttpObjectAggregator(65536));
         pipeline.addLast(new WebSocketServerCompressionHandler());
-        pipeline.addLast(new WebSocketServerProtocolHandler("/ws", null, true));
+        pipeline.addLast(new WebSocketServerProtocolHandler("/chat", null, true));
         pipeline.addLast(new WebSocketFrameHandler(jwtAuthService, objectMapper));
     }
 }

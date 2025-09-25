@@ -1,13 +1,17 @@
 package com.messenger.gateway.controller;
 
-import com.messenger.gateway.model.DTO.MessageDto;
 import com.messenger.gateway.service.MessageService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.ReactiveSecurityContextHolder;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/chats/{chatId}/messages")
@@ -17,18 +21,43 @@ public class MessageController {
     private final MessageService messageService;
 
     @GetMapping
-    public ResponseEntity<List<MessageDto>> getMessages(@PathVariable Long chatId) {
-        return ResponseEntity.ok(messageService.getChatMessages(chatId));
+    public Flux<Object> getMessages(@PathVariable Long chatId, ServerWebExchange exchange) {
+        String token = extractToken(exchange);
+        return messageService.getChatMessages(chatId, token);
     }
 
     @PostMapping
-    public ResponseEntity<MessageDto> sendMessage(
+    public Mono<Object> sendMessage(
             @PathVariable Long chatId,
-            @RequestBody MessageDto messageDto,
-            Authentication authentication) {
+            @RequestBody Map<String, String> messageRequest,
+            ServerWebExchange exchange) {
 
-        Long senderId = Long.valueOf(authentication.getName());
-        MessageDto message = messageService.sendMessage(chatId, senderId, messageDto.getContent());
-        return ResponseEntity.ok(message);
+        String token = extractToken(exchange);
+        String content = messageRequest.get("content");
+
+        return ReactiveSecurityContextHolder.getContext()
+                .map(SecurityContext::getAuthentication)
+                .map(authentication -> Long.valueOf(authentication.getName()))
+                .flatMap(senderId -> messageService.sendMessage(chatId, senderId, content, token));
+    }
+
+    @GetMapping("/{messageId}")
+    public Mono<ResponseEntity<Object>> getMessageById(
+            @PathVariable Long chatId,
+            @PathVariable Long messageId,
+            ServerWebExchange exchange) {
+
+        String token = extractToken(exchange);
+        return messageService.getMessageById(messageId, token)
+                .map(ResponseEntity::ok)
+                .defaultIfEmpty(ResponseEntity.notFound().build());
+    }
+
+    private String extractToken(ServerWebExchange exchange) {
+        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+        return "";
     }
 }

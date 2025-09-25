@@ -17,7 +17,7 @@ public class WebSocketConfig {
     @Value("${websocket.jwt.secret}")
     private String jwtSecret;
 
-    @Value("${websocket.port:8091}")
+    @Value("${websocket.port:8082}")
     private int webSocketPort;
 
     private websocket.WebSocketServer webSocketServer;

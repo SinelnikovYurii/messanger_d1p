@@ -2,81 +2,111 @@ server:
   port: 8080
 
 spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/messenger_gateway
-    username: postgres
-    password: 9911
-    driver-class-name: org.postgresql.Driver
   application:
     name: api-gateway
-    cloud:
-      gateway:
-        routes:
-          # Маршрут для WebSocket
-          - id: websocket_route
-            uri: ws://localhost:8092
-            predicates:
-              - Path=/ws/**
-            filters:
-              - TokenRelay=
-              - RewritePath=/ws/(?<segment>.*), /ws/$\{segment}
+  cloud:
+    gateway:
+      routes:
+        # Маршрут для WebSocket соединений - исправлена конфигурация
+        - id: websocket_route
+          uri: ws://localhost:8092
+          predicates:
+            - Path=/ws/**
+          metadata:
+            connect-timeout: 60000
+            response-timeout: 600s
 
-          # Маршруты для REST API
-          - id: auth_service
-            uri: http://localhost:8081
-            predicates:
-              - Path=/auth/**
-            filters:
-              - RewritePath=/auth/(?<segment>.*), /$\{segment}
+        # Маршрут для авторизации
+        - id: auth_service_route
+          uri: http://localhost:8081
+          predicates:
+            - Path=/auth/**
 
-          - id: message_service
-            uri: http://localhost:8092
-            predicates:
-              - Path=/api/messages/**
-            filters:
-              - RewritePath=/api/messages/(?<segment>.*), /api/messages/$\{segment}
+        # Маршрут для чатов
+        - id: chat_service_route
+          uri: http://localhost:8083
+          predicates:
+            - Path=/api/chats/**
 
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
+        # Маршрут для сообщений
+        - id: message_service_route
+          uri: http://localhost:8084
+          predicates:
+            - Path=/api/messages/**
 
-  spring:
-    kafka:
-      bootstrap-servers: localhost:9092
-      producer:
-        key-serializer: org.apache.kafka.common.serialization.StringSerializer
-        value-serializer: org.apache.kafka.common.serialization.StringSerializer
-      consumer:
-        group-id: messenger-group
-        key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        auto-offset-reset: earliest
+        # Маршрут для пользователей
+        - id: user_service_route
+          uri: http://localhost:8085
+          predicates:
+            - Path=/api/users/**
 
-    autoconfigure:
-      exclude:
-        - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+      # Глобальные CORS настройки
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origins:
+              - "http://localhost:3000"
+              - "ws://localhost:3000"
+            allowed-methods: "*"
+            allowed-headers: "*"
+            allow-credentials: true
+            max-age: 3600
 
-security:
-  oauth2:
-    client:
-      provider:
-        keycloak:
-          issuer-uri: http://localhost:8080/realms/master
-      registration:
-        keycloak:
-          client-id: messanger-client
-          client-secret: your-secret
+      # Настройки для WebSocket
+      httpclient:
+        websocket:
+          max-frame-payload-length: 1048576
+        connect-timeout: 60000
+        response-timeout: 600s
 
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: messenger-gateway-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+# URL микросервисов для WebClient
 auth-service:
   url: http://localhost:8081
 
-eureka:
-  client:
-    service-url:
-      defaultZone: http://localhost:8761/eureka
+chat-service:
+  url: http://localhost:8083
 
+message-service:
+  url: http://localhost:8084
+
+user-service:
+  url: http://localhost:8085
+
+security:
+  jwt:
+    secret: your_jwt_secret_key_here_must_be_at_least_256_bits_long_for_hmac_sha256_algorithm_to_work_properly_with_spring_security
+    expiration: 86400000
+
+# Настройки логирования для диагностики
 logging:
   level:
     com.messenger.gateway: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.web.reactive: DEBUG
+    reactor.netty: DEBUG
+    io.netty: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Настройки управления и мониторинга
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,routes
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      enabled: true

@@ -1,70 +1,70 @@
 package com.messenger.gateway.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.messenger.gateway.model.Chat;
-import com.messenger.gateway.model.DTO.MessageDto;
-import com.messenger.gateway.model.Message;
-import com.messenger.gateway.model.User;
-import com.messenger.gateway.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class MessageService {
 
-    private final MessageRepository messageRepository;
-    private final UserService userService;
-    private final ChatService chatService;
+    @Value("${message-service.url:http://localhost:8084}")
+    private String messageServiceUrl;
+
+    private final WebClient.Builder webClientBuilder;
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    public List<MessageDto> getChatMessages(Long chatId) {
-        return messageRepository.findMessagesByChatId(chatId).stream()
-                .map(this::convertToDto)
-                .collect(Collectors.toList());
+    public Flux<Object> getChatMessages(Long chatId, String token) {
+        return webClientBuilder.build()
+                .get()
+                .uri(messageServiceUrl + "/api/messages/chat/" + chatId)
+                .header("Authorization", "Bearer " + token)
+                .retrieve()
+                .bodyToFlux(Object.class)
+                .doOnError(error -> log.error("Error fetching chat messages: {}", error.getMessage()));
     }
 
-    public MessageDto sendMessage(Long chatId, Long senderId, String content) {
-        try {
-            Message message = new Message();
-            message.setChat(new Chat());
-            message.getChat().setId(chatId);
-            message.setSender(new User());
-            message.getSender().setId(senderId);
-            message.setContent(content);
+    public Mono<Object> sendMessage(Long chatId, Long senderId, String content, String token) {
+        Map<String, Object> messageRequest = new HashMap<>();
+        messageRequest.put("chatId", chatId);
+        messageRequest.put("senderId", senderId);
+        messageRequest.put("content", content);
 
-            Message savedMessage = messageRepository.save(message);
-
-
-            try {
-                kafkaTemplate.send("chat-messages", chatId.toString(), savedMessage);
-                log.info("Message sent to Kafka: chatId={}, messageId={}", chatId, savedMessage.getId());
-            } catch (Exception e) {
-                log.error("Failed to send message to Kafka, but message saved to DB", e);
-            }
-
-            return convertToDto(savedMessage);
-        } catch (Exception e) {
-            log.error("Error sending message", e);
-            throw new RuntimeException("Failed to send message", e);
-        }
+        return webClientBuilder.build()
+                .post()
+                .uri(messageServiceUrl + "/api/messages")
+                .header("Authorization", "Bearer " + token)
+                .bodyValue(messageRequest)
+                .retrieve()
+                .bodyToMono(Object.class)
+                .doOnSuccess(message -> {
+                    try {
+                        // Отправляем уведомление в Kafka
+                        kafkaTemplate.send("chat-messages", chatId.toString(), message);
+                        log.info("Message sent to Kafka: chatId={}", chatId);
+                    } catch (Exception e) {
+                        log.error("Failed to send message to Kafka", e);
+                    }
+                })
+                .doOnError(error -> log.error("Error sending message: {}", error.getMessage()));
     }
 
-    private MessageDto convertToDto(Message message) {
-        MessageDto dto = new MessageDto();
-        dto.setId(message.getId());
-        dto.setSenderId(message.getSender().getId());
-        dto.setChatId(message.getChat().getId());
-        dto.setContent(message.getContent());
-        dto.setTimestamp(message.getTimestamp());
-        dto.setIsRead(message.getIsRead());
-        return dto;
+    public Mono<Object> getMessageById(Long messageId, String token) {
+        return webClientBuilder.build()
+                .get()
+                .uri(messageServiceUrl + "/api/messages/" + messageId)
+                .header("Authorization", "Bearer " + token)
+                .retrieve()
+                .bodyToMono(Object.class)
+                .doOnError(error -> log.error("Error fetching message: {}", error.getMessage()));
     }
 }
