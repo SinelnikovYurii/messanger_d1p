@@ -11,6 +11,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 import part.example.authorization_service.models.User;
 
+import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
@@ -20,7 +21,7 @@ public class JwtUtil {
     @Value("${jwt.secret}")
     private String secretString;
 
-    private byte[] SECRET_KEY;
+    private SecretKey SECRET_KEY;
     private final long EXPIRATION_TIME = 864_000_000;
 
     @PostConstruct
@@ -30,7 +31,8 @@ public class JwtUtil {
             secretString = secretString + "01234567890123456789012345678901";
             secretString = secretString.substring(0, 32);
         }
-        this.SECRET_KEY = secretString.getBytes(StandardCharsets.UTF_8);
+        // Используем современный способ создания ключа
+        this.SECRET_KEY = Keys.hmacShaKeyFor(secretString.getBytes(StandardCharsets.UTF_8));
     }
 
 
@@ -56,12 +58,16 @@ public class JwtUtil {
                 .claim("id", user.getId())
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
-                .signWith(SignatureAlgorithm.HS512, SECRET_KEY)
+                .signWith(SECRET_KEY, SignatureAlgorithm.HS512)
                 .compact();
     }
 
     public Claims extractAllClaims(String token) {
-        return Jwts.parser().setSigningKey(SECRET_KEY).parseClaimsJws(token).getBody();
+        return Jwts.parserBuilder()
+                .setSigningKey(SECRET_KEY)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
     }
 
     public boolean validateToken(String token, UserDetails userDetails) {

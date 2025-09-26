@@ -1,12 +1,12 @@
-package com.messenger.gateway;
+package com.messenger.core;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class GatewayApplication {
+public class CoreApiServiceApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(GatewayApplication.class, args);
+        SpringApplication.run(CoreApiServiceApplication.class, args);
     }
 }

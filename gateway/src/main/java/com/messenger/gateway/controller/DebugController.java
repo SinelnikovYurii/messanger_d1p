@@ -32,11 +32,8 @@ public class DebugController {
         Map<String, String> routes = new HashMap<>();
         routes.put("/ws/**", "ws://localhost:8092");
         routes.put("/auth/**", "http://localhost:8081");
-        routes.put("/api/chats/**", "http://localhost:8083");
-        routes.put("/api/messages/**", "http://localhost:8084");
-        routes.put("/api/users/**", "http://localhost:8085");
+        routes.put("/api/**", "http://localhost:8083"); // Единый message service для чатов, сообщений и связанной логики
 
         return Mono.just(ResponseEntity.ok(routes));
     }
 }
-

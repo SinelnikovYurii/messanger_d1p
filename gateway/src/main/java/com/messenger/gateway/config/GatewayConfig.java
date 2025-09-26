@@ -11,27 +11,17 @@ public class GatewayConfig {
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
         return builder.routes()
-                // Маршрут для WebSocket - исправлен синтаксис фильтров
-                .route("websocket-service", r -> r.path("/ws/**")
-                        .and()
-                        .header("Upgrade", "websocket")
-                        .uri("ws://localhost:8092"))
-
-                // Маршруты для авторизации
+                // Маршрут для Authorization Service
                 .route("auth-service", r -> r.path("/auth/**")
                         .uri("http://localhost:8081"))
 
-                // Маршруты для чатов (если есть отдельный сервис)
-                .route("chat-service", r -> r.path("/api/chats/**")
-                        .uri("http://localhost:8083"))
+                // Маршрут для Core API Service
+                .route("core-api-service", r -> r.path("/api/**")
+                        .uri("http://localhost:8082"))
 
-                // Маршруты для сообщений (если есть отдельный сервис)
-                .route("message-service", r -> r.path("/api/messages/**")
-                        .uri("http://localhost:8084"))
-
-                // Маршруты для пользователей (если есть отдельный сервис)
-                .route("user-service", r -> r.path("/api/users/**")
-                        .uri("http://localhost:8085"))
+                // Маршрут для WebSocket Server
+                .route("websocket-service", r -> r.path("/ws/**")
+                        .uri("ws://localhost:8080"))
 
                 .build();
     }

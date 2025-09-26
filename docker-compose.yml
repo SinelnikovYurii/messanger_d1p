@@ -1,7 +1,26 @@
 version: '3.8'
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: messenger_postgres
+    environment:
+      POSTGRES_DB: messenger_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   kafka:
     image: bitnami/kafka:latest # Лучше указать конкретную версию, например bitnami/kafka:3.7.0
+    container_name: messenger_kafka
     ports:
       - "9092:9092"
       - "9093:9093" # Добавьте, если используете отдельный листенер для контроллера
@@ -15,7 +34,12 @@ services:
       - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
       - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
-    # volumes:
-    #   - kafka_data:/bitnami # Добавьте, если нужно сохранять данные
-# volumes:
-#   kafka_data:
+    volumes:
+      - kafka_data:/bitnami
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  kafka_data:
