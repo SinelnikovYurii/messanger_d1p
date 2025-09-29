@@ -359,6 +359,17 @@ SELECT
     COUNT(*) as record_count
 FROM chat_participants;
 
+ALTER TABLE chats ADD COLUMN chat_type varchar(255);
+UPDATE chats SET chat_type='PRIVATE' WHERE chat_type IS NULL;
+ALTER TABLE chats ALTER COLUMN chat_type SET NOT NULL;
+ALTER TABLE chats ADD CONSTRAINT chat_type_chk CHECK (chat_type IN ('PRIVATE','GROUP'));
+
+ALTER TABLE messages ADD COLUMN message_type varchar(255);
+UPDATE messages SET message_type='TEXT' WHERE message_type IS NULL;
+ALTER TABLE messages ALTER COLUMN message_type SET NOT NULL;
+ALTER TABLE messages ADD CONSTRAINT message_type_chk CHECK (message_type IN ('TEXT','IMAGE','FILE','VOICE','SYSTEM'));
+
+
 -- ===================================================
 -- ПОЛЕЗНЫЕ ЗАПРОСЫ ДЛЯ ПРОВЕРКИ
 -- ===================================================

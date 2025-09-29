@@ -3,13 +3,14 @@ package websocket.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.Channel;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import websocket.model.MessageType;
+import org.springframework.stereotype.Service;
 import websocket.model.WebSocketMessage;
 
 import java.time.Duration;
@@ -19,18 +20,16 @@ import java.util.Map;
 import java.util.Properties;
 
 @Slf4j
+@Service
+@RequiredArgsConstructor
 public class MessageForwardService {
 
-    private final String kafkaBootstrapServers;
+    private final String kafkaBootstrapServers = "localhost:9092";
     private final ObjectMapper objectMapper;
+    private final SessionManager sessionManager;
     private KafkaConsumer<String, String> consumer;
     private volatile boolean running = false;
     private Thread consumerThread;
-
-    public MessageForwardService(String kafkaBootstrapServers, ObjectMapper objectMapper) {
-        this.kafkaBootstrapServers = kafkaBootstrapServers;
-        this.objectMapper = objectMapper;
-    }
 
     public void startListening() {
         Properties props = new Properties();
@@ -71,9 +70,7 @@ public class MessageForwardService {
         try {
             log.debug("Received message from Kafka: key={}, message={}", key, message);
 
-
             Map<String, Object> messageData = objectMapper.readValue(message, Map.class);
-
 
             Long chatId = null;
             if (key != null && !key.isEmpty()) {
@@ -93,11 +90,17 @@ public class MessageForwardService {
                 return;
             }
 
+            // Создаем WebSocketMessage правильно - передаем String content вместо Map
+            WebSocketMessage wsMessage = new WebSocketMessage();
+            wsMessage.setType(WebSocketMessage.MessageType.CHAT_MESSAGE);
+            wsMessage.setContent((String) messageData.get("content"));
+            wsMessage.setChatId(chatId);
+            wsMessage.setUserId(messageData.containsKey("senderId") ?
+                ((Number) messageData.get("senderId")).longValue() : null);
+            wsMessage.setUsername((String) messageData.get("senderUsername"));
 
-            WebSocketMessage wsMessage = new WebSocketMessage(MessageType.CHAT_MESSAGE, messageData);
-
-
-            List<Channel> channels = SessionManager.getChatChannels(chatId);
+            // Получаем каналы участников чата
+            List<Channel> channels = sessionManager.getChatChannels(chatId);
             if (!channels.isEmpty()) {
                 String jsonMessage = objectMapper.writeValueAsString(wsMessage);
 

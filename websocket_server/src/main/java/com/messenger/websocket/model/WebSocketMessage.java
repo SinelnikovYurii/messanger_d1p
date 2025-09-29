@@ -1,25 +1,65 @@
 package websocket.model;
 
-
-
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
 import lombok.Data;
-import websocket.model.MessageType;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class WebSocketMessage {
+
     private MessageType type;
-    private Object payload;
+    private String content;
+    private String token;
+    private Long chatId;
+    private Long userId;
+    private String username;
     private LocalDateTime timestamp;
 
-    public WebSocketMessage() {
+    // Алиас для совместимости с фронтом, который возможно ожидает поле messageType
+    @JsonProperty("messageType")
+    public MessageType getMessageType() {
+        return type;
+    }
+
+    @JsonProperty("messageType")
+    public void setMessageType(MessageType mt) {
+        // Если фронт присылает messageType — синхронизируем с основным полем type
+        this.type = mt;
+    }
+
+    public enum MessageType {
+        AUTH,           // Аутентификация
+        AUTH_SUCCESS,   // Успешная аутентификация
+        CHAT_MESSAGE,   // Сообщение в чате
+        SYSTEM_MESSAGE, // Системное сообщение
+        USER_JOINED,    // Пользователь присоединился
+        USER_LEFT,      // Пользователь покинул чат
+        PING,           // Ping для проверки соединения
+        PONG,           // Pong ответ
+        ERROR           // Ошибка
+    }
+
+    // Конструктор для быстрого создания сообщений
+    public WebSocketMessage(MessageType type, String content) {
+        this.type = type;
+        this.content = content;
         this.timestamp = LocalDateTime.now();
     }
 
-    public WebSocketMessage(MessageType type, Object payload) {
+    // Конструктор для чат сообщений
+    public WebSocketMessage(MessageType type, String content, Long chatId, Long userId, String username) {
         this.type = type;
-        this.payload = payload;
+        this.content = content;
+        this.chatId = chatId;
+        this.userId = userId;
+        this.username = username;
         this.timestamp = LocalDateTime.now();
     }
 }

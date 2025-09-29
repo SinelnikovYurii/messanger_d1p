@@ -13,7 +13,7 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class UserService {
 
-    @Value("${user-service.url:http://localhost:8085}")
+    @Value("${user-service.url:http://localhost:8082}")
     private String userServiceUrl;
 
     private final WebClient.Builder webClientBuilder;

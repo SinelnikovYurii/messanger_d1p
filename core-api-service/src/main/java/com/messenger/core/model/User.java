@@ -4,19 +4,15 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.ToString;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "users")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"sentMessages", "chats"})
 public class User {
 
     @Id
@@ -26,44 +22,57 @@ public class User {
     @Column(unique = true, nullable = false)
     private String username;
 
-    @Column(nullable = false)
-    private String password;
-
     @Column(unique = true, nullable = false)
     private String email;
 
-    private String displayName;
+    @Column(nullable = false)
+    private String password;
 
-    private String avatarUrl;
+    @Column(name = "first_name")
+    private String firstName;
 
-    @Column(columnDefinition = "TEXT")
-    private String bio;
+    @Column(name = "last_name")
+    private String lastName;
 
-    @Enumerated(EnumType.STRING)
-    private UserStatus status = UserStatus.OFFLINE;
+    @Column(name = "profile_picture_url")
+    private String profilePictureUrl;
 
-    private LocalDateTime lastSeen;
-
-    // Дополнительные поля для статуса пользователя
     @Column(name = "is_online")
     private Boolean isOnline = false;
 
-    @Column(name = "last_seen_at")
-    private LocalDateTime lastSeenAt;
+    @Column(name = "last_seen")
+    private LocalDateTime lastSeen;
 
-    @CreationTimestamp
+    @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @UpdateTimestamp
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "sender", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    // Чаты, в которых участвует пользователь
+    @ManyToMany(mappedBy = "participants", fetch = FetchType.LAZY)
+    private Set<Chat> chats;
+
+    // Отправленные сообщения
+    @OneToMany(mappedBy = "sender", fetch = FetchType.LAZY)
     private List<Message> sentMessages;
 
-    @ManyToMany(mappedBy = "participants", fetch = FetchType.LAZY)
-    private List<Chat> chats;
+    // Исходящие запросы дружбы
+    @OneToMany(mappedBy = "requester", fetch = FetchType.LAZY)
+    private Set<Friendship> sentFriendRequests;
 
-    public enum UserStatus {
-        ONLINE, OFFLINE, AWAY, BUSY
+    // Входящие запросы дружбы
+    @OneToMany(mappedBy = "receiver", fetch = FetchType.LAZY)
+    private Set<Friendship> receivedFriendRequests;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }

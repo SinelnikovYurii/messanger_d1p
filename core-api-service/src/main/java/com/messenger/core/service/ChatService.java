@@ -1,8 +1,7 @@
 package com.messenger.core.service;
 
 import com.messenger.core.dto.ChatDto;
-import com.messenger.core.dto.UserDto;
-import com.messenger.core.dto.request.CreateChatRequest;
+import com.messenger.core.dto.MessageDto;
 import com.messenger.core.model.Chat;
 import com.messenger.core.model.Message;
 import com.messenger.core.model.User;
@@ -10,186 +9,288 @@ import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.MessageRepository;
 import com.messenger.core.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Optional;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class ChatService {
 
     private final ChatRepository chatRepository;
     private final UserRepository userRepository;
     private final MessageRepository messageRepository;
+    private final UserService userService;
+    private final MessageService messageService;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
+    /**
+     * Получить все чаты пользователя
+     */
     @Transactional(readOnly = true)
     public List<ChatDto> getUserChats(Long userId) {
-        List<Chat> chats = chatRepository.findByParticipantId(userId);
+        List<Chat> chats = chatRepository.findChatsByUserId(userId);
         return chats.stream()
-                .map(chat -> convertToDto(chat, userId))
-                .collect(Collectors.toList());
+            .map(this::convertToDto)
+            .collect(Collectors.toList());
     }
 
-    @Transactional(readOnly = true)
-    public Optional<ChatDto> getChatById(Long chatId, Long userId) {
-        return chatRepository.findById(chatId)
-                .map(chat -> convertToDto(chat, userId));
-    }
-
-    @Transactional
-    public ChatDto createChat(CreateChatRequest request, Long creatorId) {
-        Chat chat = new Chat();
-        chat.setName(request.getName());
-        chat.setDescription(request.getDescription());
-        chat.setType(Chat.ChatType.valueOf(request.getType()));
-        chat.setCreatedBy(creatorId);
-
-        // Добавляем участников
-        List<User> participants = userRepository.findAllById(request.getParticipantIds());
-
-        // Добавляем создателя, если его нет в списке
-        User creator = userRepository.findById(creatorId)
-                .orElseThrow(() -> new RuntimeException("Creator not found"));
-        if (!participants.contains(creator)) {
-            participants.add(creator);
+    /**
+     * Создать приватный чат между двумя пользователями
+     */
+    public ChatDto createPrivateChat(Long currentUserId, Long participantId) {
+        if (currentUserId.equals(participantId)) {
+            throw new IllegalArgumentException("Нельзя создать чат с самим собой");
         }
 
-        chat.setParticipants(participants);
+        // Проверяем, существует ли уже приватный чат между этими пользователями
+        Optional<Chat> existingChat = chatRepository
+            .findPrivateChatBetweenUsers(currentUserId, participantId);
 
-        Chat savedChat = chatRepository.save(chat);
-        return convertToDto(savedChat, creatorId);
-    }
-
-    @Transactional
-    public ChatDto createPrivateChat(Long userId1, Long userId2) {
-        // Проверяем, существует ли уже приватный чат между пользователями
-        Chat existingChat = chatRepository.findPrivateChatBetweenUsers(userId1, userId2);
-        if (existingChat != null) {
-            return convertToDto(existingChat, userId1);
+        if (existingChat.isPresent()) {
+            return convertToDto(existingChat.get());
         }
+
+        // Получаем пользователей
+        User currentUser = userRepository.findById(currentUserId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        User participant = userRepository.findById(participantId)
+            .orElseThrow(() -> new RuntimeException("Собеседник не найден"));
 
         // Создаем новый приватный чат
         Chat chat = new Chat();
-        chat.setType(Chat.ChatType.PRIVATE);
-        chat.setCreatedBy(userId1);
+        chat.setChatType(Chat.ChatType.PRIVATE);
+        chat.setCreatedBy(currentUser);
+        chat.setParticipants(Set.of(currentUser, participant));
 
-        List<User> participants = userRepository.findAllById(List.of(userId1, userId2));
-        if (participants.size() != 2) {
-            throw new RuntimeException("One or both users not found");
+        Chat savedChat = chatRepository.save(chat);
+
+        // Отправляем системное сообщение о создании чата
+        sendSystemMessage(savedChat, "Чат создан");
+
+        return convertToDto(savedChat);
+    }
+
+    /**
+     * Создать групповой чат
+     */
+    public ChatDto createGroupChat(Long creatorId, ChatDto.CreateChatRequest request) {
+        User creator = userRepository.findById(creatorId)
+            .orElseThrow(() -> new RuntimeException("Создатель не найден"));
+
+        // Получаем участников
+        Set<User> participants = new HashSet<>();
+        participants.add(creator); // Добавляем создателя
+
+        if (request.getParticipantIds() != null) {
+            List<User> requestedParticipants = userRepository.findAllById(request.getParticipantIds());
+            participants.addAll(requestedParticipants);
         }
 
-        // Название приватного чата - имена участников
-        String chatName = participants.stream()
-                .map(user -> user.getDisplayName() != null ? user.getDisplayName() : user.getUsername())
-                .collect(Collectors.joining(", "));
-        chat.setName(chatName);
-
+        // Создаем групповой чат
+        Chat chat = new Chat();
+        chat.setChatName(request.getChatName());
+        chat.setChatType(Chat.ChatType.GROUP);
+        chat.setChatDescription(request.getChatDescription());
+        chat.setCreatedBy(creator);
         chat.setParticipants(participants);
 
         Chat savedChat = chatRepository.save(chat);
-        return convertToDto(savedChat, userId1);
+
+        // Отправляем системное сообщение о создании группового чата
+        String systemMessage = String.format("Групповой чат '%s' создан пользователем %s",
+            savedChat.getChatName(), creator.getUsername());
+        sendSystemMessage(savedChat, systemMessage);
+
+        return convertToDto(savedChat);
     }
 
-    @Transactional
-    public ChatDto addParticipant(Long chatId, Long userId, Long newParticipantId) {
+    /**
+     * Добавить участников в групповой чат
+     */
+    public ChatDto addParticipants(Long chatId, Long currentUserId, List<Long> userIds) {
         Chat chat = chatRepository.findById(chatId)
-                .orElseThrow(() -> new RuntimeException("Chat not found"));
+            .orElseThrow(() -> new RuntimeException("Чат не найден"));
 
-        // Проверяем, является ли пользователь участником чата
+        if (chat.getChatType() != Chat.ChatType.GROUP) {
+            throw new IllegalArgumentException("Можно добавлять участников только в групповые чаты");
+        }
+
+        // Проверяем, что текущий пользователь является участником чата
         boolean isParticipant = chat.getParticipants().stream()
-                .anyMatch(p -> p.getId().equals(userId));
+            .anyMatch(p -> p.getId().equals(currentUserId));
+
         if (!isParticipant) {
-            throw new RuntimeException("Access denied");
+            throw new IllegalArgumentException("У вас нет прав для добавления участников в этот чат");
         }
 
-        // Добавляем нового участника
-        User newParticipant = userRepository.findById(newParticipantId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        // Получаем новых участников
+        List<User> newParticipants = userRepository.findAllById(userIds);
+        Set<User> currentParticipants = new HashSet<>(chat.getParticipants());
 
-        if (!chat.getParticipants().contains(newParticipant)) {
-            chat.getParticipants().add(newParticipant);
-            chatRepository.save(chat);
+        List<String> addedUsernames = new ArrayList<>();
+        for (User user : newParticipants) {
+            if (!currentParticipants.contains(user)) {
+                currentParticipants.add(user);
+                addedUsernames.add(user.getUsername());
+            }
         }
 
-        return convertToDto(chat, userId);
+        chat.setParticipants(currentParticipants);
+        Chat savedChat = chatRepository.save(chat);
+
+        // Отправляем системное сообщение о добавлении участников
+        if (!addedUsernames.isEmpty()) {
+            User currentUser = userRepository.findById(currentUserId).orElse(null);
+            String systemMessage = String.format("%s добавил(а) в чат: %s",
+                currentUser != null ? currentUser.getUsername() : "Пользователь",
+                String.join(", ", addedUsernames));
+            sendSystemMessage(savedChat, systemMessage);
+
+            // Отправляем уведомление через Kafka
+            notifyParticipantsAboutChatUpdate(savedChat, "PARTICIPANTS_ADDED");
+        }
+
+        return convertToDto(savedChat);
     }
 
-    @Transactional
-    public void removeParticipant(Long chatId, Long userId, Long participantToRemove) {
+    /**
+     * Покинуть чат
+     */
+    public void leaveChat(Long chatId, Long userId) {
         Chat chat = chatRepository.findById(chatId)
-                .orElseThrow(() -> new RuntimeException("Chat not found"));
+            .orElseThrow(() -> new RuntimeException("Чат не найден"));
 
-        // Только создатель может удалять участников или пользователь может покинуть чат сам
-        if (!chat.getCreatedBy().equals(userId) && !participantToRemove.equals(userId)) {
-            throw new RuntimeException("Access denied");
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+        if (chat.getChatType() == Chat.ChatType.PRIVATE) {
+            throw new IllegalArgumentException("Нельзя покинуть приватный чат");
         }
 
-        chat.getParticipants().removeIf(p -> p.getId().equals(participantToRemove));
+        Set<User> participants = new HashSet<>(chat.getParticipants());
+        if (participants.remove(user)) {
+            chat.setParticipants(participants);
+            chatRepository.save(chat);
+
+            // Отправляем системное сообщение
+            String systemMessage = String.format("%s покинул(а) чат", user.getUsername());
+            sendSystemMessage(chat, systemMessage);
+
+            // Если чат остался пустым, удаляем его
+            if (participants.isEmpty()) {
+                chatRepository.delete(chat);
+            } else {
+                notifyParticipantsAboutChatUpdate(chat, "PARTICIPANT_LEFT");
+            }
+        }
+    }
+
+    /**
+     * Получить информацию о чате
+     */
+    @Transactional(readOnly = true)
+    public ChatDto getChatInfo(Long chatId, Long currentUserId) {
+        Chat chat = chatRepository.findById(chatId)
+            .orElseThrow(() -> new RuntimeException("Чат не найден"));
+
+        // Проверяем, что пользователь является участником чата
+        boolean isParticipant = chat.getParticipants().stream()
+            .anyMatch(p -> p.getId().equals(currentUserId));
+
+        if (!isParticipant) {
+            throw new IllegalArgumentException("У вас нет доступа к этому чату");
+        }
+
+        return convertToDto(chat);
+    }
+
+    /**
+     * Поиск чатов по названию
+     */
+    @Transactional(readOnly = true)
+    public List<ChatDto> searchChats(String query, Long userId) {
+        List<Chat> chats = chatRepository.findChatsByNameContaining(query);
+
+        // Фильтруем чаты, к которым пользователь имеет доступ
+        return chats.stream()
+            .filter(chat -> chat.getParticipants().stream()
+                .anyMatch(p -> p.getId().equals(userId)))
+            .map(this::convertToDto)
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Отправить системное сообщение в чат
+     */
+    private void sendSystemMessage(Chat chat, String content) {
+        Message systemMessage = new Message();
+        systemMessage.setContent(content);
+        systemMessage.setMessageType(Message.MessageType.SYSTEM);
+        systemMessage.setChat(chat);
+        systemMessage.setSender(null); // Системное сообщение не имеет отправителя
+
+        messageRepository.save(systemMessage);
+
+        // Обновляем время последнего сообщения в чате
+        chat.setLastMessageAt(LocalDateTime.now());
         chatRepository.save(chat);
     }
 
-    private ChatDto convertToDto(Chat chat, Long currentUserId) {
+    /**
+     * Уведомить участников об изменениях в чате через Kafka
+     */
+    private void notifyParticipantsAboutChatUpdate(Chat chat, String eventType) {
+        Map<String, Object> notification = Map.of(
+            "type", "CHAT_UPDATE",
+            "chatId", chat.getId(),
+            "eventType", eventType,
+            "timestamp", LocalDateTime.now()
+        );
+
+        kafkaTemplate.send("chat-updates", notification);
+    }
+
+    /**
+     * Конвертировать Chat в ChatDto
+     */
+    private ChatDto convertToDto(Chat chat) {
         ChatDto dto = new ChatDto();
         dto.setId(chat.getId());
-        dto.setName(chat.getName());
-        dto.setDescription(chat.getDescription());
-        dto.setType(chat.getType());
-        dto.setAvatarUrl(chat.getAvatarUrl());
+        dto.setChatName(chat.getChatName());
+        dto.setChatType(chat.getChatType());
+        dto.setChatDescription(chat.getChatDescription());
+        dto.setChatAvatarUrl(chat.getChatAvatarUrl());
         dto.setCreatedAt(chat.getCreatedAt());
-        dto.setCreatedBy(chat.getCreatedBy());
-        dto.setLastActivity(chat.getLastActivity());
+        dto.setLastMessageAt(chat.getLastMessageAt());
 
-        // Конвертируем участников
-        List<UserDto> participantDtos = chat.getParticipants().stream()
-                .map(this::convertUserToDto)
-                .collect(Collectors.toList());
-        dto.setParticipants(participantDtos);
-
-        // Получаем последнее сообщение (упрощенно, без использования MessageService)
-        List<Message> messages = messageRepository.findByChatIdOrderBySentAtDesc(chat.getId(),
-                org.springframework.data.domain.PageRequest.of(0, 1)).getContent();
-        if (!messages.isEmpty()) {
-            Message lastMessage = messages.get(0);
-            dto.setLastMessage(convertMessageToDto(lastMessage));
+        if (chat.getCreatedBy() != null) {
+            dto.setCreatedBy(userService.convertToDto(chat.getCreatedBy()));
         }
 
-        // Подсчитываем непрочитанные сообщения
-        Long unreadCount = messageRepository.countUnreadMessagesInChat(chat.getId(), currentUserId);
-        dto.setUnreadCount(unreadCount != null ? unreadCount : 0L);
+        if (chat.getParticipants() != null) {
+            dto.setParticipants(chat.getParticipants().stream()
+                .map(userService::convertToDto)
+                .collect(Collectors.toList()));
+        }
 
-        return dto;
-    }
+        // Получаем последнее сообщение
+        if (chat.getMessages() != null && !chat.getMessages().isEmpty()) {
+            Message lastMessage = chat.getMessages().stream()
+                .filter(m -> !m.getIsDeleted())
+                .max(Comparator.comparing(Message::getCreatedAt))
+                .orElse(null);
 
-    private UserDto convertUserToDto(User user) {
-        UserDto dto = new UserDto();
-        dto.setId(user.getId());
-        dto.setUsername(user.getUsername());
-        dto.setDisplayName(user.getDisplayName());
-        dto.setEmail(user.getEmail());
-        dto.setAvatarUrl(user.getAvatarUrl());
-        dto.setBio(user.getBio());
-        dto.setStatus(user.getStatus());
-        dto.setLastSeen(user.getLastSeen());
-        dto.setCreatedAt(user.getCreatedAt());
-        dto.setIsOnline(user.getIsOnline());
-        dto.setLastSeenAt(user.getLastSeenAt());
-        return dto;
-    }
+            if (lastMessage != null) {
+                dto.setLastMessage(messageService.convertToDto(lastMessage));
+            }
+        }
 
-    private com.messenger.core.dto.MessageDto convertMessageToDto(Message message) {
-        com.messenger.core.dto.MessageDto dto = new com.messenger.core.dto.MessageDto();
-        dto.setId(message.getId());
-        dto.setContent(message.getContent());
-        dto.setType(message.getType());
-        dto.setSentAt(message.getSentAt());
-        dto.setChatId(message.getChat().getId());
-        dto.setIsEdited(message.getIsEdited());
-        dto.setEditedAt(message.getEditedAt());
-        dto.setStatus(message.getStatus());
-        dto.setSender(convertUserToDto(message.getSender()));
         return dto;
     }
 }

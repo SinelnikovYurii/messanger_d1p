@@ -1,23 +1,38 @@
-websocket:
+server:
   port: 8092
 
-  jwt:
-    secret: SYDLF_52DangerKey_SYDLF_9911894325962389476582937465986348957632897562387ww7sfusdfy9374hguif738794fgu9iw3g4f987uswuhfiuGIUDS9GDUSWHTPIWEHYS0DFS098DF98SDFSHDFUSH9374FISDU87SADASUDGHGHAISD7A9OSD823UGHRUIHGSDW9D78Y238RUIOSWADHFOUWHSSDFDDUHWWF9384FGSD
-
 spring:
+  application:
+    name: websocket-server
+
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
       group-id: websocket-service-group
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       auto-offset-reset: latest
+      properties:
+        spring.json.trusted.packages: "*"
 
   main:
     web-application-type: none
 
+# JWT Configuration
+jwt:
+  secret: SYDLF_52DangerKey_SYDLF_9911894325962389476582937465986348957632897562387ww7sfusdfy9374hguif738794fgu9iw3g4f987uswuhfiuGIUDS9GDUSWHTPIWEHYS0DFS098DF98SDFSHDFUSH9374FISDU87SADASUDGHGHAISD7A9OSD823UGHRUIHGSDW9D78Y238RUIOSWADHFOUWHSSDFDDUHWWF9384FGSD
+
+# WebSocket Configuration
+websocket:
+  port: 8092
+  allowed-origins: "*"
+  heartbeat-interval: 30000
+
 logging:
   level:
-    websocket: INFO
+    com.messenger.websocket: DEBUG
+    websocket.handler: INFO
+    websocket: DEBUG
+    org.springframework.web.socket: DEBUG
     org.apache.kafka: WARN
-
+    root: INFO

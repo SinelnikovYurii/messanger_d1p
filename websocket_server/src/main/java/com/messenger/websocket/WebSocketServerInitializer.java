@@ -14,6 +14,7 @@ import io.netty.handler.codec.http.cors.CorsConfig;
 import io.netty.handler.codec.http.cors.CorsConfigBuilder;
 import io.netty.handler.codec.http.cors.CorsHandler;
 import websocket.handler.WebSocketFrameHandler;
+import websocket.handler.HttpRequestHandler;
 import websocket.service.JwtAuthService;
 
 public class WebSocketServerInitializer extends ChannelInitializer<SocketChannel> {
@@ -40,6 +41,7 @@ public class WebSocketServerInitializer extends ChannelInitializer<SocketChannel
 
         pipeline.addLast(new HttpServerCodec());
         pipeline.addLast(new HttpObjectAggregator(65536));
+        pipeline.addLast(new HttpRequestHandler());
         pipeline.addLast(new WebSocketServerCompressionHandler());
         pipeline.addLast(new WebSocketServerProtocolHandler("/chat", null, true));
         pipeline.addLast(new WebSocketFrameHandler(jwtAuthService, objectMapper));

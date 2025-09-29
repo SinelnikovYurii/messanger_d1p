@@ -4,9 +4,6 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.ToString;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -14,42 +11,62 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"sender", "chat"})
 public class Message {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
     @Enumerated(EnumType.STRING)
-    private MessageType type = MessageType.TEXT;
+    @Column(name = "message_type", nullable = false)
+    private MessageType messageType = MessageType.TEXT;
 
-    @CreationTimestamp
-    private LocalDateTime sentAt;
+    @Column(name = "is_edited")
+    private Boolean isEdited = false;
 
+    @Column(name = "is_deleted")
+    private Boolean isDeleted = false;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    // Отправитель сообщения
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sender_id", nullable = false)
     private User sender;
 
+    // Чат, в котором отправлено сообщение
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "chat_id", nullable = false)
     private Chat chat;
 
-    private Boolean isEdited = false;
+    // Ссылка на отвечаемое сообщение (для функции ответа)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reply_to_message_id")
+    private Message replyToMessage;
 
-    private LocalDateTime editedAt;
-
-    @Enumerated(EnumType.STRING)
-    private MessageStatus status = MessageStatus.SENT;
-
-    public enum MessageType {
-        TEXT, IMAGE, FILE, AUDIO, VIDEO
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
     }
 
-    public enum MessageStatus {
-        SENT, DELIVERED, READ
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+
+    public enum MessageType {
+        TEXT,
+        IMAGE,
+        FILE,
+        VOICE,
+        SYSTEM  // Системные сообщения (пользователь присоединился/покинул чат)
     }
 }

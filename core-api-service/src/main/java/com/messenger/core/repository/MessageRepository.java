@@ -13,13 +13,23 @@ import java.util.List;
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Long> {
 
-    Page<Message> findByChatIdOrderBySentAtDesc(Long chatId, Pageable pageable);
+    // Найти сообщения чата с пагинацией
+    @Query("SELECT m FROM Message m WHERE m.chat.id = :chatId AND m.isDeleted = false ORDER BY m.createdAt DESC")
+    List<Message> findByChatIdOrderByCreatedAtDesc(@Param("chatId") Long chatId, Pageable pageable);
 
-    List<Message> findByChatIdOrderBySentAtAsc(Long chatId);
+    // Найти последнее сообщение в чате
+    @Query("SELECT m FROM Message m WHERE m.chat.id = :chatId AND m.isDeleted = false ORDER BY m.createdAt DESC")
+    List<Message> findLastMessageByChatId(@Param("chatId") Long chatId, Pageable pageable);
 
-    @Query("SELECT m FROM Message m WHERE m.chat.id = :chatId AND LOWER(m.content) LIKE LOWER(CONCAT('%', :query, '%'))")
-    List<Message> searchInChat(@Param("chatId") Long chatId, @Param("query") String query);
+    // Поиск сообщений в чате по содержимому
+    @Query("SELECT m FROM Message m WHERE m.chat.id = :chatId AND " +
+            "LOWER(m.content) LIKE LOWER(CONCAT('%', :query, '%')) AND m.isDeleted = false " +
+            "ORDER BY m.createdAt DESC")
+    List<Message> searchMessagesInChat(@Param("chatId") Long chatId,
+                                       @Param("query") String query,
+                                       Pageable pageable);
 
-    @Query("SELECT COUNT(m) FROM Message m WHERE m.chat.id = :chatId AND m.sender.id != :userId AND m.status != 'READ'")
-    Long countUnreadMessagesInChat(@Param("chatId") Long chatId, @Param("userId") Long userId);
+    // Подсчет непрочитанных сообщений в чате (можно расширить позже)
+    @Query("SELECT COUNT(m) FROM Message m WHERE m.chat.id = :chatId AND m.isDeleted = false")
+    Long countMessagesByChatId(@Param("chatId") Long chatId);
 }

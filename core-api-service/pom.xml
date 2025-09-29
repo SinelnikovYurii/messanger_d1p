@@ -92,7 +92,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Spring Boot Configuration Processor для распознавания application.yml -->
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-configuration-processor</artifactId>

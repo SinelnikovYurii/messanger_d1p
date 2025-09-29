@@ -90,10 +90,18 @@ public class AuthenticationService {
 
             String token = jwtUtil.generateToken(user);
 
+            // Создаем объект пользователя для фронтенда (без пароля)
+            Map<String, Object> userInfo = Map.of(
+                    "id", user.getId(),
+                    "username", user.getUsername(),
+                    "email", user.getEmail() != null ? user.getEmail() : "",
+                    "firstName", user.getFirstName() != null ? user.getFirstName() : "",
+                    "lastName", user.getLastName() != null ? user.getLastName() : ""
+            );
+
             return ResponseEntity.ok(Map.of(
                     "token", token,
-                    "userId", user.getId(),
-                    "username", user.getUsername(),
+                    "user", userInfo,
                     "message", "Успешная авторизация"
             ));
         } catch (Exception e) {

@@ -14,10 +14,10 @@ import jakarta.annotation.PreDestroy;
 @Slf4j
 public class WebSocketConfig {
 
-    @Value("${websocket.jwt.secret}")
+    @Value("${jwt.secret}")
     private String jwtSecret;
 
-    @Value("${websocket.port:8082}")
+    @Value("${server.port:8092}")
     private int webSocketPort;
 
     private websocket.WebSocketServer webSocketServer;
@@ -36,7 +36,6 @@ public class WebSocketConfig {
     @PostConstruct
     public void startWebSocketServer() {
         try {
-
             JwtAuthService jwtAuthService = new JwtAuthService(jwtSecret);
             ObjectMapper objectMapper = new ObjectMapper();
 

@@ -2,60 +2,64 @@ package websocket.service;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
-import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 
 @Slf4j
+@Service
 public class JwtAuthService {
 
-    private final SecretKey secretKey;
+    private final String secretKey;
 
-    public JwtAuthService(String jwtSecret) {
-
-        if (jwtSecret == null || jwtSecret.isEmpty()) {
-            jwtSecret = "defaultSecretKey12345678901234567890";
-        }
-
-        if (jwtSecret.length() < 32) {
-            jwtSecret = jwtSecret + "0123456789012345678901234567890123456789";
-            jwtSecret = jwtSecret.substring(0, 32);
-        }
-
-        log.info("Using JWT secret of length: {}", jwtSecret.length());
-        this.secretKey = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+    public JwtAuthService(String secret) {
+        this.secretKey = secret;
     }
 
-    public Long validateTokenAndGetUserId(String token) {
+    public boolean validateToken(String token) {
         try {
-
-            if (token == null || token.trim().isEmpty()) {
-                log.warn("Token is null or empty");
-                return null;
-            }
-
-
-            if (!token.contains(".") || token.split("\\.").length < 2) {
-                log.warn("Invalid JWT format: {}", token);
-                return null;
-            }
-
-
-            Claims claims = Jwts.parser()
-                    .verifyWith(secretKey)
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
-
-            String subject = claims.getSubject();
-            log.info("Token validated successfully, subject: {}", subject);
-
-            return 1L;
-
+            Jwts.parser()
+                .setSigningKey(secretKey.getBytes(StandardCharsets.UTF_8))
+                .parseClaimsJws(token);
+            return true;
         } catch (Exception e) {
-            log.error("Invalid JWT token: {}", e.getMessage());
+            log.debug("Invalid JWT token: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public String getUsernameFromToken(String token) {
+        try {
+            Claims claims = Jwts.parser()
+                .setSigningKey(secretKey.getBytes(StandardCharsets.UTF_8))
+                .parseClaimsJws(token)
+                .getBody();
+            return claims.getSubject();
+        } catch (Exception e) {
+            log.debug("Failed to extract username from token: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    public Long getUserIdFromToken(String token) {
+        try {
+            Claims claims = Jwts.parser()
+                .setSigningKey(secretKey.getBytes(StandardCharsets.UTF_8))
+                .parseClaimsJws(token)
+                .getBody();
+            // Пытаемся получить userId из claims разными способами
+            Object userIdObj = claims.get("userId");
+            if (userIdObj != null) {
+                if (userIdObj instanceof Number) {
+                    return ((Number) userIdObj).longValue();
+                } else if (userIdObj instanceof String) {
+                    return Long.valueOf((String) userIdObj);
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            log.debug("Failed to extract user ID from token: {}", e.getMessage());
             return null;
         }
     }

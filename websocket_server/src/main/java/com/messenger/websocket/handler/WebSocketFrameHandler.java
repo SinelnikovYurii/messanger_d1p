@@ -1,174 +1,171 @@
 package websocket.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.codec.http.QueryStringDecoder;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
-import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
-import lombok.extern.slf4j.Slf4j;
-import websocket.model.MessageType;
-import websocket.model.UserSession;
 import websocket.model.WebSocketMessage;
 import websocket.service.JwtAuthService;
 import websocket.service.SessionManager;
-
-import java.util.List;
-import java.util.Map;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
+import io.netty.handler.codec.http.websocketx.WebSocketFrame;
+import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class WebSocketFrameHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
+@RequiredArgsConstructor
+public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocketFrame> {
 
     private final JwtAuthService jwtAuthService;
     private final ObjectMapper objectMapper;
-    private Long authenticatedUserId;
+    private final SessionManager sessionManager = new SessionManager();
 
-    public WebSocketFrameHandler(JwtAuthService jwtAuthService, ObjectMapper objectMapper) {
-        this.jwtAuthService = jwtAuthService;
-        this.objectMapper = objectMapper;
-        this.objectMapper.registerModule(new JavaTimeModule());
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, WebSocketFrame frame) throws Exception {
+        if (frame instanceof TextWebSocketFrame) {
+            String request = ((TextWebSocketFrame) frame).text();
+            log.debug("Received WebSocket message: {}", request);
+
+            try {
+                WebSocketMessage message = objectMapper.readValue(request, WebSocketMessage.class);
+                handleMessage(ctx, message);
+            } catch (Exception e) {
+                log.error("Error processing WebSocket message: {}", e.getMessage());
+                sendErrorMessage(ctx, "Invalid message format");
+            }
+        }
+    }
+
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        // Просто логируем установку TCP соединения. Аутентификацию переносим на завершение рукопожатия.
+        log.info("WebSocket TCP connection active (before handshake): {}", ctx.channel().id());
+        super.channelActive(ctx);
     }
 
     @Override
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
-        if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete) {
-            WebSocketServerProtocolHandler.HandshakeComplete handshake = (WebSocketServerProtocolHandler.HandshakeComplete) evt;
-            log.info("WebSocket handshake completed for channel: {}. URI: {}", ctx.channel().id(), handshake.requestUri());
-            authenticate(ctx, handshake.requestUri());
-        } else {
-            super.userEventTriggered(ctx, evt);
-        }
-    }
-
-    private void authenticate(ChannelHandlerContext ctx, String uri) {
-        log.info("Authenticating request for URI: {}", uri); // Добавлено логирование
-        QueryStringDecoder decoder = new QueryStringDecoder(uri);
-        Map<String, List<String>> params = decoder.parameters();
-        log.info("Decoded parameters: {}", params); // Добавлено логирование
-        List<String> tokenList = params.get("token");
-
-        if (tokenList == null || tokenList.isEmpty()) {
-            log.warn("Authentication failed: token is missing. Channel: {}", ctx.channel().id());
-            sendErrorMessage(ctx, "Authentication failed: token is missing");
-            ctx.close();
-            return;
-        }
-
-        String token = tokenList.get(0);
-        try {
-            Long userId = jwtAuthService.validateTokenAndGetUserId(token);
-            if (userId == null) {
-                log.warn("Authentication failed: invalid token. Channel: {}", ctx.channel().id());
-                sendErrorMessage(ctx, "Invalid authentication token");
+        if (evt == WebSocketServerProtocolHandler.ServerHandshakeStateEvent.HANDSHAKE_COMPLETE) {
+            log.info("WebSocket handshake completed for channel: {}", ctx.channel().id());
+            String token = ctx.channel().attr(HttpRequestHandler.TOKEN_ATTRIBUTE).get();
+            if (token != null) {
+                authenticateWithToken(ctx, token);
+            } else {
+                log.warn("No token found after handshake for WebSocket connection: {}", ctx.channel().id());
+                sendErrorMessage(ctx, "Authentication token required");
                 ctx.close();
-                return;
             }
-
-            this.authenticatedUserId = userId;
-            UserSession session = new UserSession(userId, ctx.channel(), "User" + userId, null);
-            SessionManager.addUserSession(userId, session);
-
-            WebSocketMessage response = new WebSocketMessage(MessageType.CHAT_MESSAGE,
-                    "Welcome! You are connected as user " + userId);
-            ctx.channel().writeAndFlush(new TextWebSocketFrame(objectMapper.writeValueAsString(response)));
-
-            log.info("User {} authenticated and joined WebSocket. Channel: {}", userId, ctx.channel().id());
-
-        } catch (Exception e) {
-            log.error("Error during authentication", e);
-            sendErrorMessage(ctx, "Authentication error: " + e.getMessage());
-            ctx.close();
         }
+        super.userEventTriggered(ctx, evt);
     }
 
     @Override
-    public void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame frame) throws Exception {
-        String request = frame.text();
-        log.debug("Received message: {}", request);
-
-        if (authenticatedUserId == null) {
-            sendErrorMessage(ctx, "Not authenticated");
-            return;
-        }
-
-        try {
-            WebSocketMessage message = objectMapper.readValue(request, WebSocketMessage.class);
-
-            switch (message.getType()) {
-                case SEND_MESSAGE:
-                    handleSendMessage(ctx, message);
-                    break;
-                case LEAVE_CHAT:
-                    handleLeaveChat(ctx, message);
-                    break;
-                default:
-                    sendErrorMessage(ctx, "Unsupported message type: " + message.getType());
-            }
-        } catch (Exception e) {
-            log.error("Error processing message", e);
-            sendErrorMessage(ctx, "Invalid message format");
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private void handleSendMessage(ChannelHandlerContext ctx, WebSocketMessage message) {
-        try {
-            Map<String, Object> payload = (Map<String, Object>) message.getPayload();
-            payload.put("senderId", authenticatedUserId);
-            payload.put("timestamp", java.time.LocalDateTime.now().toString());
-
-            WebSocketMessage response = new WebSocketMessage(MessageType.CHAT_MESSAGE, payload);
-            ctx.channel().writeAndFlush(new TextWebSocketFrame(objectMapper.writeValueAsString(response)));
-
-        } catch (Exception e) {
-            log.error("Error sending message", e);
-            sendErrorMessage(ctx, "Failed to send message");
-        }
-    }
-
-    private void handleLeaveChat(ChannelHandlerContext ctx, WebSocketMessage message) {
-        try {
-            SessionManager.removeUserSession(ctx.channel());
-            this.authenticatedUserId = null;
-
-            WebSocketMessage response = new WebSocketMessage(MessageType.CHAT_MESSAGE, "You have left the chat");
-            ctx.channel().writeAndFlush(new TextWebSocketFrame(objectMapper.writeValueAsString(response)));
-
-        } catch (Exception e) {
-            log.error("Error leaving chat", e);
-            sendErrorMessage(ctx, "Failed to leave chat");
-        }
-    }
-
-    private void sendErrorMessage(ChannelHandlerContext ctx, String errorMessage) {
-        try {
-            WebSocketMessage error = new WebSocketMessage(MessageType.ERROR, errorMessage);
-            ctx.channel().writeAndFlush(new TextWebSocketFrame(objectMapper.writeValueAsString(error)));
-        } catch (Exception e) {
-            log.error("Failed to send error message", e);
-        }
-    }
-
-    @Override
-    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
-        log.info("WebSocket handler added for channel: {}", ctx.channel().id());
-    }
-
-    @Override
-    public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
-        log.info("WebSocket handler removed for channel: {}", ctx.channel().id());
-        if (this.authenticatedUserId != null) {
-            SessionManager.removeUserSession(ctx.channel());
-        }
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        log.info("WebSocket connection closed: {}", ctx.channel().id());
+        sessionManager.removeSession(ctx.channel().id().asShortText());
+        super.channelInactive(ctx);
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        log.error("WebSocket error on channel {}", ctx.channel().id(), cause);
-        if (this.authenticatedUserId != null) {
-            SessionManager.removeUserSession(ctx.channel());
-        }
+        log.error("WebSocket error: {}", cause.getMessage(), cause);
         ctx.close();
+    }
+
+    private void authenticateWithToken(ChannelHandlerContext ctx, String token) {
+        if (!jwtAuthService.validateToken(token)) {
+            sendErrorMessage(ctx, "Invalid authentication token");
+            ctx.close();
+            return;
+        }
+
+        String username = jwtAuthService.getUsernameFromToken(token);
+        Long userId = jwtAuthService.getUserIdFromToken(token);
+
+        if (username == null || userId == null) {
+            sendErrorMessage(ctx, "Invalid token data");
+            ctx.close();
+            return;
+        }
+
+        sessionManager.addSession(ctx.channel().id().asShortText(), ctx, username, userId);
+
+        WebSocketMessage response = new WebSocketMessage();
+        response.setType(WebSocketMessage.MessageType.AUTH_SUCCESS);
+        response.setContent("Authentication successful");
+        response.setUserId(userId);
+        response.setUsername(username);
+        sendMessage(ctx, response);
+
+        // Дополнительное системное сообщение, чтобы фронт мог явно отреагировать
+        WebSocketMessage connected = new WebSocketMessage();
+        connected.setType(WebSocketMessage.MessageType.SYSTEM_MESSAGE);
+        connected.setContent("CONNECTED");
+        connected.setUserId(userId);
+        connected.setUsername(username);
+        sendMessage(ctx, connected);
+
+        log.info("User {} (ID: {}) authenticated successfully via URL token", username, userId);
+    }
+
+    private void handleMessage(ChannelHandlerContext ctx, WebSocketMessage message) {
+        switch (message.getType()) {
+            case AUTH:
+                handleAuth(ctx, message);
+                break;
+            case CHAT_MESSAGE:
+                handleChatMessage(ctx, message);
+                break;
+            case PING:
+                handlePing(ctx);
+                break;
+            default:
+                log.warn("Unknown message type: {}", message.getType());
+                sendErrorMessage(ctx, "Unknown message type");
+        }
+    }
+
+    private void handleAuth(ChannelHandlerContext ctx, WebSocketMessage message) {
+        String sessionId = ctx.channel().id().asShortText();
+        if (sessionManager.isAuthenticated(sessionId)) {
+            sendErrorMessage(ctx, "Already authenticated");
+            return;
+        }
+
+        String token = message.getToken();
+        authenticateWithToken(ctx, token);
+    }
+
+    private void handleChatMessage(ChannelHandlerContext ctx, WebSocketMessage message) {
+        String sessionId = ctx.channel().id().asShortText();
+        if (!sessionManager.isAuthenticated(sessionId)) {
+            sendErrorMessage(ctx, "Not authenticated");
+            return;
+        }
+
+        log.info("Chat message from user {}: {}",
+                sessionManager.getUsername(sessionId), message.getContent());
+    }
+
+    private void handlePing(ChannelHandlerContext ctx) {
+        WebSocketMessage pong = new WebSocketMessage();
+        pong.setType(WebSocketMessage.MessageType.PONG);
+        sendMessage(ctx, pong);
+    }
+
+    private void sendMessage(ChannelHandlerContext ctx, WebSocketMessage message) {
+        try {
+            String json = objectMapper.writeValueAsString(message);
+            ctx.writeAndFlush(new TextWebSocketFrame(json));
+        } catch (Exception e) {
+            log.error("Error sending WebSocket message: {}", e.getMessage());
+        }
+    }
+
+    private void sendErrorMessage(ChannelHandlerContext ctx, String error) {
+        WebSocketMessage errorMessage = new WebSocketMessage();
+        errorMessage.setType(WebSocketMessage.MessageType.ERROR);
+        errorMessage.setContent(error);
+        sendMessage(ctx, errorMessage);
     }
 }

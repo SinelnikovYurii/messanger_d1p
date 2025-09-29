@@ -7,13 +7,27 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ChatRepository extends JpaRepository<Chat, Long> {
 
-    @Query("SELECT c FROM Chat c JOIN c.participants p WHERE p.id = :userId")
-    List<Chat> findByParticipantId(@Param("userId") Long userId);
+    // Найти все чаты пользователя
+    @Query("SELECT c FROM Chat c JOIN c.participants p WHERE p.id = :userId ORDER BY c.lastMessageAt DESC")
+    List<Chat> findChatsByUserId(@Param("userId") Long userId);
 
-    @Query("SELECT c FROM Chat c WHERE c.type = 'PRIVATE' AND SIZE(c.participants) = 2 AND EXISTS (SELECT p1 FROM c.participants p1 WHERE p1.id = :user1) AND EXISTS (SELECT p2 FROM c.participants p2 WHERE p2.id = :user2)")
-    Chat findPrivateChatBetweenUsers(@Param("user1") Long user1Id, @Param("user2") Long user2Id);
+    // Найти приватный чат между двумя пользователями
+    @Query("SELECT c FROM Chat c JOIN c.participants p1 JOIN c.participants p2 " +
+           "WHERE c.chatType = 'PRIVATE' AND p1.id = :user1Id AND p2.id = :user2Id " +
+           "AND (SELECT COUNT(p) FROM c.participants p) = 2")
+    Optional<Chat> findPrivateChatBetweenUsers(@Param("user1Id") Long user1Id,
+                                              @Param("user2Id") Long user2Id);
+
+    // Найти групповые чаты пользователя
+    @Query("SELECT c FROM Chat c JOIN c.participants p WHERE p.id = :userId AND c.chatType = 'GROUP'")
+    List<Chat> findGroupChatsByUserId(@Param("userId") Long userId);
+
+    // Найти чаты по названию (для поиска)
+    @Query("SELECT c FROM Chat c WHERE c.chatName LIKE %:name% AND c.chatType = 'GROUP'")
+    List<Chat> findChatsByNameContaining(@Param("name") String name);
 }

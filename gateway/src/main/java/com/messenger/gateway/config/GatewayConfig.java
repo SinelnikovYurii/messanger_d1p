@@ -19,9 +19,9 @@ public class GatewayConfig {
                 .route("core-api-service", r -> r.path("/api/**")
                         .uri("http://localhost:8082"))
 
-                // Маршрут для WebSocket Server
+                // Маршрут для WebSocket Server - исправлен порт
                 .route("websocket-service", r -> r.path("/ws/**")
-                        .uri("ws://localhost:8080"))
+                        .uri("ws://localhost:8092"))
 
                 .build();
     }
