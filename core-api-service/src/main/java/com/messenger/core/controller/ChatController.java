@@ -2,6 +2,7 @@ package com.messenger.core.controller;
 
 import com.messenger.core.dto.ChatDto;
 import com.messenger.core.service.ChatService;
+import com.messenger.core.service.OptimizedDataService;
 import com.messenger.core.config.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -12,19 +13,20 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/chats")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ChatController {
 
     private final ChatService chatService;
+    private final OptimizedDataService optimizedDataService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     /**
-     * Получить все чаты пользователя
+     * Получить все чаты пользователя (оптимизированная версия)
      */
     @GetMapping
     public ResponseEntity<List<ChatDto>> getUserChats(HttpServletRequest request) {
         Long userId = getCurrentUserId(request);
-        List<ChatDto> chats = chatService.getUserChats(userId);
+        // Используем оптимизированный сервис для минимизации запросов к БД
+        List<ChatDto> chats = optimizedDataService.getOptimizedUserChats(userId);
         return ResponseEntity.ok(chats);
     }
 
@@ -111,20 +113,20 @@ public class ChatController {
             try {
                 return Long.parseLong(userIdHeader);
             } catch (NumberFormatException e) {
-                throw new RuntimeException("Неверный формат ID пользователя в заголовке: " + userIdHeader);
+                throw new IllegalArgumentException("Неверный формат ID пользователя в заголовке: " + userIdHeader);
             }
         }
 
-        // Если заголовка нет, пробуем через JWT фильтр (fallback)
+        // Если заголовка нет, пробуем через JWT фильтр
         Long userId = null;
         try {
             userId = jwtAuthenticationFilter.getUserIdFromRequest(request);
         } catch (Exception e) {
-            // Игнорируем ошибку JWT фильтра, если есть заголовки Gateway
+            throw new IllegalArgumentException("Ошибка авторизации: " + e.getMessage(), e);
         }
 
         if (userId == null) {
-            throw new RuntimeException("Пользователь не аутентифицирован - отсутствуют данные авторизации");
+            throw new IllegalArgumentException("Пользователь не аутентифицирован - отсутствуют данные авторизации");
         }
 
         return userId;

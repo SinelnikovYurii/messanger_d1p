@@ -7,11 +7,6 @@ import org.springframework.security.config.annotation.web.reactive.EnableWebFlux
 import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.reactive.CorsConfigurationSource;
-import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
-
-import java.util.Arrays;
 
 @Configuration
 @EnableWebFluxSecurity
@@ -27,29 +22,16 @@ public class SecurityConfig {
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
         return http
                 .csrf(csrf -> csrf.disable())
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .cors(cors -> cors.disable()) // Отключаем CORS в SecurityConfig, используем globalcors в application.yml
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers("/auth/**", "/public/**", "/actuator/**").permitAll()
                         .pathMatchers("/ws/**").permitAll() // WebSocket соединения
+                        // Разрешаем OPTIONS запросы (CORS preflight) без аутентификации
+                        .pathMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         // API запросы требуют аутентификации
                         .anyExchange().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, SecurityWebFiltersOrder.AUTHENTICATION)
                 .build();
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
-        configuration.setAllowCredentials(true);
-        configuration.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        // Применяем CORS для ВСЕХ путей, включая проксируемые /api/**
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
     }
 }

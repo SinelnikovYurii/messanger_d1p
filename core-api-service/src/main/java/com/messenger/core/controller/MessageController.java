@@ -2,6 +2,7 @@ package com.messenger.core.controller;
 
 import com.messenger.core.dto.MessageDto;
 import com.messenger.core.service.MessageService;
+import com.messenger.core.service.OptimizedDataService;
 import com.messenger.core.config.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -12,10 +13,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/messages")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class MessageController {
 
     private final MessageService messageService;
+    private final OptimizedDataService optimizedDataService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     /**
@@ -31,7 +32,7 @@ public class MessageController {
     }
 
     /**
-     * Получить сообщения чата
+     * Получить сообщения чата (оптимизированная версия)
      */
     @GetMapping("/chat/{chatId}")
     public ResponseEntity<List<MessageDto>> getChatMessages(
@@ -40,7 +41,8 @@ public class MessageController {
             @RequestParam(defaultValue = "50") int size,
             HttpServletRequest request) {
         Long userId = getCurrentUserId(request);
-        List<MessageDto> messages = messageService.getChatMessages(chatId, userId, page, size);
+        // Используем оптимизированный сервис для минимизации запросов к БД
+        List<MessageDto> messages = optimizedDataService.getOptimizedChatMessages(chatId, userId, page, size);
         return ResponseEntity.ok(messages);
     }
 

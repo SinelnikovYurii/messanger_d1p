@@ -11,6 +11,18 @@ import java.util.Optional;
 
 @Repository
 public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
+    List<Friendship> findByRequesterId_Id(Long requesterId);
+    List<Friendship> findByReceiverId_Id(Long receiverId);
+
+    List<Friendship> findByRequesterId_IdAndStatus(Long requesterId, FriendshipStatus status);
+    List<Friendship> findByReceiverId_IdAndStatus(Long receiverId, FriendshipStatus status);
+
+    // Поиск запроса дружбы по ID отправителя и получателя
+    Optional<Friendship> findByRequesterId_IdAndReceiverId_IdAndStatus(
+            Long requesterId, Long receiverId, FriendshipStatus status);
+
+    // Добавляем метод для поиска любых отношений между пользователями
+    List<Friendship> findByRequesterIdOrReceiverId(Long userId, Long sameUserId);
 
     // Найти дружескую связь между двумя пользователями
     @Query("SELECT f FROM Friendship f WHERE " +

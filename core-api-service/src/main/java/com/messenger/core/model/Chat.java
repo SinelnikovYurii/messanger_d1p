@@ -3,7 +3,9 @@ package com.messenger.core.model;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.BatchSize;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
@@ -13,6 +15,7 @@ import java.util.Set;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(exclude = {"participants", "messages", "createdBy"})
 public class Chat {
 
     @Id
@@ -53,10 +56,12 @@ public class Chat {
         joinColumns = @JoinColumn(name = "chat_id"),
         inverseJoinColumns = @JoinColumn(name = "user_id")
     )
+    @BatchSize(size = 16)
     private Set<User> participants;
 
     // Сообщения в чате
     @OneToMany(mappedBy = "chat", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @BatchSize(size = 20)
     private List<Message> messages;
 
     @PrePersist

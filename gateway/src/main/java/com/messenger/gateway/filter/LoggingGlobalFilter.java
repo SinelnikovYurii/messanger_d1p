@@ -16,18 +16,11 @@ public class LoggingGlobalFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, org.springframework.cloud.gateway.filter.GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
 
-        // Логируем только API запросы
-        if (path.startsWith("/api/")) {
-            String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-            log.info("=== Gateway Request Debug ===");
-            log.info("Path: {}", path);
-            log.info("Method: {}", exchange.getRequest().getMethod());
-            log.info("Authorization header present: {}", authHeader != null);
-            if (authHeader != null) {
-                log.info("Auth header starts with Bearer: {}", authHeader.startsWith("Bearer "));
-            }
-            log.info("All headers: {}", exchange.getRequest().getHeaders().keySet());
-            log.info("============================");
+        // Логируем только базовую информацию для API запросов
+        if (path.startsWith("/api/") && log.isDebugEnabled()) {
+            String method = exchange.getRequest().getMethod().toString();
+            boolean hasAuth = exchange.getRequest().getHeaders().containsKey(HttpHeaders.AUTHORIZATION);
+            log.debug("Gateway request: {} {}, Auth: {}", method, path, hasAuth);
         }
 
         return chain.filter(exchange);

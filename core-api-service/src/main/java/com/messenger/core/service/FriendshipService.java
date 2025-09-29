@@ -60,11 +60,18 @@ public class FriendshipService {
 
     /**
      * Принять запрос дружбы
+     * @param requesterId ID пользователя, отправившего запрос (с фронтенда это приходит как requestId)
+     * @param userId ID текущего пользователя, который принимает запрос
      */
-    public void acceptFriendRequest(Long requestId, Long userId) {
-        Friendship friendship = friendshipRepository.findById(requestId)
-            .orElseThrow(() -> new RuntimeException("Запрос дружбы не найден"));
+    @Transactional
+    public void acceptFriendRequest(Long requesterId, Long userId) {
+        // Ищем запрос дружбы по ID отправителя (requester) и получателя (receiver) со статусом PENDING
+        Friendship friendship = friendshipRepository
+                .findByRequesterId_IdAndReceiverId_IdAndStatus(requesterId, userId, Friendship.FriendshipStatus.PENDING)
+                .orElseThrow(() -> new RuntimeException("Запрос дружбы не найден. Отправитель ID: " +
+                        requesterId + ", Получатель ID: " + userId));
 
+        // Дополнительная проверка на всякий случай
         if (!friendship.getReceiver().getId().equals(userId)) {
             throw new IllegalArgumentException("У вас нет прав на принятие этого запроса");
         }

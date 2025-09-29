@@ -49,6 +49,7 @@ public class ChatDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CreatePrivateChatRequest {
+        @com.fasterxml.jackson.annotation.JsonProperty("participantId")
         private Long participantId;
     }
 }

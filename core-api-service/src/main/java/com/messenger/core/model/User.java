@@ -3,7 +3,9 @@ package com.messenger.core.model;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.BatchSize;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
@@ -13,6 +15,7 @@ import java.util.Set;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(exclude = {"chats", "sentMessages", "sentFriendRequests", "receivedFriendRequests"})
 public class User {
 
     @Id
@@ -51,18 +54,22 @@ public class User {
 
     // Чаты, в которых участвует пользователь
     @ManyToMany(mappedBy = "participants", fetch = FetchType.LAZY)
+    @BatchSize(size = 16)
     private Set<Chat> chats;
 
     // Отправленные сообщения
     @OneToMany(mappedBy = "sender", fetch = FetchType.LAZY)
+    @BatchSize(size = 20)
     private List<Message> sentMessages;
 
     // Исходящие запросы дружбы
     @OneToMany(mappedBy = "requester", fetch = FetchType.LAZY)
+    @BatchSize(size = 10)
     private Set<Friendship> sentFriendRequests;
 
     // Входящие запросы дружбы
     @OneToMany(mappedBy = "receiver", fetch = FetchType.LAZY)
+    @BatchSize(size = 10)
     private Set<Friendship> receivedFriendRequests;
 
     @PrePersist

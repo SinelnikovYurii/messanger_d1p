@@ -12,7 +12,15 @@ import java.util.Optional;
 @Repository
 public interface ChatRepository extends JpaRepository<Chat, Long> {
 
-    // Найти все чаты пользователя
+    // Найти все чаты пользователя с оптимизированной загрузкой
+    @Query("SELECT DISTINCT c FROM Chat c " +
+           "LEFT JOIN FETCH c.participants p " +
+           "LEFT JOIN FETCH c.createdBy " +
+           "WHERE p.id = :userId " +
+           "ORDER BY c.lastMessageAt DESC")
+    List<Chat> findChatsByUserIdWithParticipants(@Param("userId") Long userId);
+
+    // Найти все чаты пользователя (простой запрос)
     @Query("SELECT c FROM Chat c JOIN c.participants p WHERE p.id = :userId ORDER BY c.lastMessageAt DESC")
     List<Chat> findChatsByUserId(@Param("userId") Long userId);
 
@@ -30,4 +38,25 @@ public interface ChatRepository extends JpaRepository<Chat, Long> {
     // Найти чаты по названию (для поиска)
     @Query("SELECT c FROM Chat c WHERE c.chatName LIKE %:name% AND c.chatType = 'GROUP'")
     List<Chat> findChatsByNameContaining(@Param("name") String name);
+
+    // Проверить, является ли пользователь участником чата
+    @Query("SELECT COUNT(p) > 0 FROM Chat c JOIN c.participants p WHERE c.id = :chatId AND p.id = :userId")
+    boolean isUserParticipant(@Param("chatId") Long chatId, @Param("userId") Long userId);
+
+    // Найти чат с загруженными участниками
+    @Query("SELECT c FROM Chat c LEFT JOIN FETCH c.participants WHERE c.id = :chatId")
+    Optional<Chat> findByIdWithParticipants(@Param("chatId") Long chatId);
+
+    // Найти чат с загруженными участниками и создателем
+    @Query("SELECT c FROM Chat c " +
+           "LEFT JOIN FETCH c.participants " +
+           "LEFT JOIN FETCH c.createdBy " +
+           "WHERE c.id = :chatId")
+    Optional<Chat> findByIdWithParticipantsAndCreatedBy(@Param("chatId") Long chatId);
+
+    // Найти чаты пользователя с участниками (batch loading)
+    @Query("SELECT DISTINCT c FROM Chat c " +
+           "LEFT JOIN FETCH c.participants " +
+           "WHERE c.id IN :chatIds")
+    List<Chat> findChatsByIdsWithParticipants(@Param("chatIds") List<Long> chatIds);
 }

@@ -6,6 +6,7 @@ import com.messenger.core.model.User;
 import com.messenger.core.repository.FriendshipRepository;
 import com.messenger.core.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,8 +48,7 @@ public class UserService {
 
         // Добавляем информацию о статусе дружбы
         if (!userId.equals(currentUserId)) {
-            Optional<Friendship.FriendshipStatus> status =
-                friendshipRepository.getFriendshipStatus(currentUserId, userId);
+            Optional<Friendship.FriendshipStatus> status = getFriendshipStatus(currentUserId, userId);
             dto.setFriendshipStatus(status.orElse(null));
         }
 
@@ -112,8 +112,37 @@ public class UserService {
     }
 
     /**
+     * Получить список друзей пользователя
+     */
+    @Transactional(readOnly = true)
+    public List<UserDto> getFriends(Long userId) {
+        List<Friendship> friendships = friendshipRepository.findAcceptedFriendships(userId);
+
+        return friendships.stream()
+            .map(friendship -> {
+                // Определяем, кто является другом текущего пользователя
+                User friend = friendship.getRequester().getId().equals(userId)
+                    ? friendship.getReceiver()
+                    : friendship.getRequester();
+
+                return convertToDto(friend);
+            })
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Получить статус дружбы с кешированием
+     */
+    @Cacheable(value = "friendshipStatus", key = "#currentUserId + '-' + #targetUserId")
+    @Transactional(readOnly = true)
+    public Optional<Friendship.FriendshipStatus> getFriendshipStatus(Long currentUserId, Long targetUserId) {
+        return friendshipRepository.getFriendshipStatus(currentUserId, targetUserId);
+    }
+
+    /**
      * Конвертировать User в UserDto
      */
+    @Cacheable(value = "users", key = "#user.id", unless = "#result == null")
     public UserDto convertToDto(User user) {
         UserDto dto = new UserDto();
         dto.setId(user.getId());
@@ -139,9 +168,8 @@ public class UserService {
         result.setProfilePictureUrl(user.getProfilePictureUrl());
         result.setIsOnline(user.getIsOnline());
 
-        // Получаем статус дружбы
-        Optional<Friendship.FriendshipStatus> friendshipStatus =
-            friendshipRepository.getFriendshipStatus(currentUserId, user.getId());
+        // Получаем статус дружбы с кешированием
+        Optional<Friendship.FriendshipStatus> friendshipStatus = getFriendshipStatus(currentUserId, user.getId());
         result.setFriendshipStatus(friendshipStatus.orElse(null));
 
         // Определяем, можно ли начать чат (если пользователи друзья или нет связи)

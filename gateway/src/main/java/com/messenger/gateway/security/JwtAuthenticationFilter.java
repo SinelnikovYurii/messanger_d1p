@@ -32,6 +32,12 @@ public class JwtAuthenticationFilter implements WebFilter {
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
 
+        // Пропускаем OPTIONS запросы (CORS preflight)
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod().name())) {
+            logger.debug("Skipping authentication for OPTIONS request: {}", request.getPath().value());
+            return chain.filter(exchange);
+        }
+
         // Пропускаем аутентификацию для публичных эндпоинтов
         String path = request.getPath().value();
         if (isPublicPath(path)) {
@@ -40,25 +46,21 @@ public class JwtAuthenticationFilter implements WebFilter {
         }
 
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        logger.info("=== Gateway JWT Filter Debug ===");
-        logger.info("Processing request: {} {}", request.getMethod(), path);
-        logger.info("Authorization header: {}", authHeader != null ? authHeader.substring(0, Math.min(20, authHeader.length())) + "..." : "null");
 
         // Если нет заголовка Authorization, продолжаем без аутентификации
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            logger.debug("No Bearer token found for path: {}, continuing without authentication", path);
+            logger.debug("No Bearer token found for path: {}", path);
             return chain.filter(exchange);
         }
 
         String token = authHeader.substring(7);
-        logger.debug("Processing JWT token for path: {}", path);
 
         try {
             if (jwtService.isTokenValid(token)) {
                 String username = jwtService.extractUsername(token);
                 Long userId = jwtService.extractUserId(token);
 
-                logger.info("JWT token valid for user: {} (ID: {})", username, userId);
+                logger.debug("JWT token valid for user: {} (ID: {})", username, userId);
 
                 Authentication authentication = new UsernamePasswordAuthenticationToken(
                     username, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))
@@ -68,10 +70,8 @@ public class JwtAuthenticationFilter implements WebFilter {
                 ServerHttpRequest mutatedRequest = request.mutate()
                     .header("X-User-Id", userId.toString())
                     .header("X-Username", username)
-                    .header("Authorization", "Bearer " + token) // Используем чистый токен, а не весь заголовок
+                    .header("Authorization", "Bearer " + token)
                     .build();
-
-                logger.info("Added headers - X-User-Id: {}, X-Username: {}", userId, username);
 
                 ServerWebExchange mutatedExchange = exchange.mutate()
                     .request(mutatedRequest)
@@ -81,12 +81,10 @@ public class JwtAuthenticationFilter implements WebFilter {
                     .contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication));
             } else {
                 logger.warn("JWT token validation failed for path: {}", path);
-                // Возвращаем 401 только если токен есть, но невалидный
                 return unauthorizedResponse(exchange, "Invalid JWT token");
             }
         } catch (Exception e) {
             logger.error("JWT token processing error for path: {}: {}", path, e.getMessage());
-            // Возвращаем 401 при ошибке обработки токена
             return unauthorizedResponse(exchange, "JWT token processing error: " + e.getMessage());
         }
     }
@@ -96,7 +94,6 @@ public class JwtAuthenticationFilter implements WebFilter {
                path.equals("/") ||
                path.startsWith("/public/") ||
                path.startsWith("/actuator/");
-               // Удаляем path.startsWith("/api/") - эти пути требуют аутентификации
     }
 
     private Mono<Void> unauthorizedResponse(ServerWebExchange exchange, String message) {

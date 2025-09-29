@@ -34,10 +34,32 @@ public class ChatService {
      */
     @Transactional(readOnly = true)
     public List<ChatDto> getUserChats(Long userId) {
-        List<Chat> chats = chatRepository.findChatsByUserId(userId);
-        return chats.stream()
-            .map(this::convertToDto)
-            .collect(Collectors.toList());
+        try {
+            if (userId == null) {
+                throw new IllegalArgumentException("ID пользователя не может быть пустым");
+            }
+
+            // Проверяем существование пользователя
+            if (!userRepository.existsById(userId)) {
+                throw new IllegalArgumentException("Пользователь с ID " + userId + " не найден");
+            }
+
+            // Используем оптимизированный запрос с JOIN FETCH
+            List<Chat> chats = chatRepository.findChatsByUserIdWithParticipants(userId);
+
+            // Предварительно загружаем последние сообщения для всех чатов одним запросом
+            Map<Long, Message> lastMessages = getLastMessagesForChats(chats);
+
+            return chats.stream()
+                .map(chat -> convertToDtoOptimized(chat, lastMessages.get(chat.getId())))
+                .collect(Collectors.toList());
+        } catch (Exception e) {
+            // Логирование ошибки с подробной информацией
+            String errorMessage = "Ошибка при получении чатов пользователя: " + e.getMessage();
+            System.err.println(errorMessage);
+            e.printStackTrace();
+            throw new RuntimeException(errorMessage, e);
+        }
     }
 
     /**
@@ -48,6 +70,10 @@ public class ChatService {
             throw new IllegalArgumentException("Нельзя создать чат с самим собой");
         }
 
+        if (participantId == null) {
+            throw new IllegalArgumentException("ID участника не может быть пустым");
+        }
+
         // Проверяем, существует ли уже приватный чат между этими пользователями
         Optional<Chat> existingChat = chatRepository
             .findPrivateChatBetweenUsers(currentUserId, participantId);
@@ -56,24 +82,43 @@ public class ChatService {
             return convertToDto(existingChat.get());
         }
 
-        // Получаем пользователей
-        User currentUser = userRepository.findById(currentUserId)
-            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
-        User participant = userRepository.findById(participantId)
-            .orElseThrow(() -> new RuntimeException("Собеседник не найден"));
+        try {
+            // Получаем пользователей
+            User currentUser = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Текущий пользователь не найден"));
+            User participant = userRepository.findById(participantId)
+                .orElseThrow(() -> new IllegalArgumentException("Собеседник не найден"));
 
-        // Создаем новый приватный чат
-        Chat chat = new Chat();
-        chat.setChatType(Chat.ChatType.PRIVATE);
-        chat.setCreatedBy(currentUser);
-        chat.setParticipants(Set.of(currentUser, participant));
+            // Создаем новый приватный чат
+            Chat chat = new Chat();
+            chat.setChatType(Chat.ChatType.PRIVATE);
+            chat.setCreatedBy(currentUser);
 
-        Chat savedChat = chatRepository.save(chat);
+            // Используем HashSet вместо Set.of для большей надежности
+            Set<User> participants = new HashSet<>();
+            participants.add(currentUser);
+            participants.add(participant);
+            chat.setParticipants(participants);
 
-        // Отправляем системное сообщение о создании чата
-        sendSystemMessage(savedChat, "Чат создан");
+            // Устанавливаем имя чата (для удобства отображения)
+            chat.setChatName(participant.getUsername());
 
-        return convertToDto(savedChat);
+            Chat savedChat = chatRepository.save(chat);
+
+            // Отправляем системное сообщение о создании чата
+            sendSystemMessage(savedChat, "Чат создан");
+
+            // Уведомляем участников о создании чата через Kafka
+            notifyParticipantsAboutChatUpdate(savedChat, "CHAT_CREATED");
+
+            return convertToDto(savedChat);
+        } catch (Exception e) {
+            // Логирование ошибки с подробной информацией
+            String errorMessage = "Ошибка при создании приватного чата: " + e.getMessage();
+            System.err.println(errorMessage);
+            e.printStackTrace();
+            throw new RuntimeException(errorMessage, e);
+        }
     }
 
     /**
@@ -106,6 +151,9 @@ public class ChatService {
         String systemMessage = String.format("Групповой чат '%s' создан пользователем %s",
             savedChat.getChatName(), creator.getUsername());
         sendSystemMessage(savedChat, systemMessage);
+
+        // Уведомляем всех участников о создании группового чата
+        notifyParticipantsAboutChatUpdate(savedChat, "CHAT_CREATED");
 
         return convertToDto(savedChat);
     }
@@ -141,22 +189,75 @@ public class ChatService {
             }
         }
 
-        chat.setParticipants(currentParticipants);
-        Chat savedChat = chatRepository.save(chat);
-
-        // Отправляем системное сообщение о добавлении участников
+        // Если были добавлены новые участники
         if (!addedUsernames.isEmpty()) {
-            User currentUser = userRepository.findById(currentUserId).orElse(null);
-            String systemMessage = String.format("%s добавил(а) в чат: %s",
-                currentUser != null ? currentUser.getUsername() : "Пользователь",
-                String.join(", ", addedUsernames));
-            sendSystemMessage(savedChat, systemMessage);
+            chat.setParticipants(currentParticipants);
+            Chat updatedChat = chatRepository.save(chat);
 
-            // Отправляем уведомление через Kafka
-            notifyParticipantsAboutChatUpdate(savedChat, "PARTICIPANTS_ADDED");
+            // Отправляем системное сообщение о добавлении участников
+            User currentUser = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+            String message = String.format("%s добавил(а) пользователей: %s",
+                currentUser.getUsername(), String.join(", ", addedUsernames));
+            sendSystemMessage(updatedChat, message);
+
+            // Уведомляем всех участников о добавлении новых пользователей
+            notifyParticipantsAboutChatUpdate(updatedChat, "PARTICIPANTS_ADDED");
+
+            return convertToDto(updatedChat);
         }
 
-        return convertToDto(savedChat);
+        return convertToDto(chat);
+    }
+
+    /**
+     * Удалить участника из группового чата
+     */
+    public ChatDto removeParticipant(Long chatId, Long currentUserId, Long participantId) {
+        Chat chat = chatRepository.findById(chatId)
+            .orElseThrow(() -> new RuntimeException("Чат не найден"));
+
+        // Проверяем, что это групповой чат
+        if (chat.getChatType() != Chat.ChatType.GROUP) {
+            throw new IllegalArgumentException("Удалять участников можно только из групповых чатов");
+        }
+
+        // Проверяем, что текущий пользователь является создателем чата
+        boolean isCreator = chat.getCreatedBy().getId().equals(currentUserId);
+        if (!isCreator) {
+            throw new IllegalArgumentException("Только создатель чата может удалять участников");
+        }
+
+        // Проверяем, что удаляемый пользователь не создатель чата
+        if (chat.getCreatedBy().getId().equals(participantId)) {
+            throw new IllegalArgumentException("Нельзя удалить создателя чата");
+        }
+
+        User participantToRemove = userRepository.findById(participantId)
+            .orElseThrow(() -> new RuntimeException("Удаляемый пользователь не найден"));
+
+        // Удаляем участника из чата
+        Set<User> participants = new HashSet<>(chat.getParticipants());
+        if (participants.remove(participantToRemove)) {
+            chat.setParticipants(participants);
+            Chat updatedChat = chatRepository.save(chat);
+
+            // Отправляем системное сообщение
+            String message = String.format("Пользователь %s был удален из чата",
+                participantToRemove.getUsername());
+            sendSystemMessage(updatedChat, message);
+
+            // Уведомляем оставшихся участников об удалении
+            notifyParticipantsAboutChatUpdate(updatedChat, "PARTICIPANT_REMOVED");
+
+            // Отдельно уведомляем удаленного пользователя
+            notifyUserAboutChatUpdate(participantId, chatId, "REMOVED_FROM_CHAT");
+
+            return convertToDto(updatedChat);
+        }
+
+        return convertToDto(chat);
     }
 
     /**
@@ -169,25 +270,60 @@ public class ChatService {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
 
+        // Для приватных чатов мы просто удаляем пользователя из списка участников
         if (chat.getChatType() == Chat.ChatType.PRIVATE) {
-            throw new IllegalArgumentException("Нельзя покинуть приватный чат");
-        }
-
-        Set<User> participants = new HashSet<>(chat.getParticipants());
-        if (participants.remove(user)) {
+            Set<User> participants = new HashSet<>(chat.getParticipants());
+            participants.remove(user);
             chat.setParticipants(participants);
             chatRepository.save(chat);
 
-            // Отправляем системное сообщение
-            String systemMessage = String.format("%s покинул(а) чат", user.getUsername());
-            sendSystemMessage(chat, systemMessage);
+            // Уведомляем другого участника
+            chat.getParticipants().forEach(participant -> {
+                if (!participant.getId().equals(userId)) {
+                    notifyUserAboutChatUpdate(participant.getId(), chatId, "PARTICIPANT_LEFT");
+                }
+            });
 
-            // Если чат остался пустым, удаляем его
-            if (participants.isEmpty()) {
-                chatRepository.delete(chat);
+            return;
+        }
+
+        // Для групповых чатов проверяем, является ли пользователь создателем
+        if (chat.getCreatedBy().getId().equals(userId)) {
+            // Если создатель покидает чат, назначаем нового создателя (если есть другие участники)
+            Set<User> participants = new HashSet<>(chat.getParticipants());
+            participants.remove(user);
+
+            if (!participants.isEmpty()) {
+                User newCreator = participants.iterator().next();
+                chat.setCreatedBy(newCreator);
+                chat.setParticipants(participants);
+
+                Chat updatedChat = chatRepository.save(chat);
+
+                // Системное сообщение о смене создателя
+                String message = String.format("%s покинул(а) чат. %s назначен(а) новым администратором.",
+                    user.getUsername(), newCreator.getUsername());
+                sendSystemMessage(updatedChat, message);
+
+                // Уведомляем всех участников
+                notifyParticipantsAboutChatUpdate(updatedChat, "CREATOR_CHANGED");
             } else {
-                notifyParticipantsAboutChatUpdate(chat, "PARTICIPANT_LEFT");
+                // Если больше нет участников, удаляем чат
+                chatRepository.delete(chat);
             }
+        } else {
+            // Если обычный участник покидает чат
+            Set<User> participants = new HashSet<>(chat.getParticipants());
+            participants.remove(user);
+            chat.setParticipants(participants);
+            Chat updatedChat = chatRepository.save(chat);
+
+            // Системное сообщение
+            String message = String.format("%s покинул(а) чат", user.getUsername());
+            sendSystemMessage(updatedChat, message);
+
+            // Уведомляем оставшихся участников
+            notifyParticipantsAboutChatUpdate(updatedChat, "PARTICIPANT_LEFT");
         }
     }
 
@@ -195,17 +331,15 @@ public class ChatService {
      * Получить информацию о чате
      */
     @Transactional(readOnly = true)
-    public ChatDto getChatInfo(Long chatId, Long currentUserId) {
-        Chat chat = chatRepository.findById(chatId)
-            .orElseThrow(() -> new RuntimeException("Чат не найден"));
-
-        // Проверяем, что пользователь является участником чата
-        boolean isParticipant = chat.getParticipants().stream()
-            .anyMatch(p -> p.getId().equals(currentUserId));
-
-        if (!isParticipant) {
+    public ChatDto getChatInfo(Long chatId, Long userId) {
+        // Сначала проверяем, является ли пользователь участником чата
+        if (!chatRepository.isUserParticipant(chatId, userId)) {
             throw new IllegalArgumentException("У вас нет доступа к этому чату");
         }
+
+        // Загружаем чат с участниками
+        Chat chat = chatRepository.findByIdWithParticipants(chatId)
+            .orElseThrow(() -> new RuntimeException("Чат не найден"));
 
         return convertToDto(chat);
     }
@@ -215,12 +349,11 @@ public class ChatService {
      */
     @Transactional(readOnly = true)
     public List<ChatDto> searchChats(String query, Long userId) {
-        List<Chat> chats = chatRepository.findChatsByNameContaining(query);
+        // Для безопасности ищем только в чатах, где пользователь является участником
+        List<Chat> userChats = chatRepository.findChatsByUserId(userId);
 
-        // Фильтруем чаты, к которым пользователь имеет доступ
-        return chats.stream()
-            .filter(chat -> chat.getParticipants().stream()
-                .anyMatch(p -> p.getId().equals(userId)))
+        return userChats.stream()
+            .filter(chat -> chat.getChatName().toLowerCase().contains(query.toLowerCase()))
             .map(this::convertToDto)
             .collect(Collectors.toList());
     }
@@ -229,31 +362,21 @@ public class ChatService {
      * Отправить системное сообщение в чат
      */
     private void sendSystemMessage(Chat chat, String content) {
-        Message systemMessage = new Message();
-        systemMessage.setContent(content);
-        systemMessage.setMessageType(Message.MessageType.SYSTEM);
-        systemMessage.setChat(chat);
-        systemMessage.setSender(null); // Системное сообщение не имеет отправителя
+        Message message = new Message();
+        message.setChat(chat);
+        message.setContent(content);
+        message.setMessageType(Message.MessageType.SYSTEM);
+        message.setCreatedAt(LocalDateTime.now());
+        // Для системных сообщений устанавливаем sender_id равным создателю чата
+        if (chat.getCreatedBy() != null) {
+            message.setSender(chat.getCreatedBy());
+        }
 
-        messageRepository.save(systemMessage);
+        messageRepository.save(message);
 
         // Обновляем время последнего сообщения в чате
         chat.setLastMessageAt(LocalDateTime.now());
         chatRepository.save(chat);
-    }
-
-    /**
-     * Уведомить участников об изменениях в чате через Kafka
-     */
-    private void notifyParticipantsAboutChatUpdate(Chat chat, String eventType) {
-        Map<String, Object> notification = Map.of(
-            "type", "CHAT_UPDATE",
-            "chatId", chat.getId(),
-            "eventType", eventType,
-            "timestamp", LocalDateTime.now()
-        );
-
-        kafkaTemplate.send("chat-updates", notification);
     }
 
     /**
@@ -269,10 +392,12 @@ public class ChatService {
         dto.setCreatedAt(chat.getCreatedAt());
         dto.setLastMessageAt(chat.getLastMessageAt());
 
+        // Конвертируем создателя
         if (chat.getCreatedBy() != null) {
             dto.setCreatedBy(userService.convertToDto(chat.getCreatedBy()));
         }
 
+        // Конвертируем участников
         if (chat.getParticipants() != null) {
             dto.setParticipants(chat.getParticipants().stream()
                 .map(userService::convertToDto)
@@ -282,7 +407,6 @@ public class ChatService {
         // Получаем последнее сообщение
         if (chat.getMessages() != null && !chat.getMessages().isEmpty()) {
             Message lastMessage = chat.getMessages().stream()
-                .filter(m -> !m.getIsDeleted())
                 .max(Comparator.comparing(Message::getCreatedAt))
                 .orElse(null);
 
@@ -292,5 +416,89 @@ public class ChatService {
         }
 
         return dto;
+    }
+
+    /**
+     * Конвертировать Chat в ChatDto (оптимизированный вариант)
+     */
+    private ChatDto convertToDtoOptimized(Chat chat, Message lastMessage) {
+        ChatDto dto = new ChatDto();
+        dto.setId(chat.getId());
+        dto.setChatName(chat.getChatName());
+        dto.setChatType(chat.getChatType());
+        dto.setChatDescription(chat.getChatDescription());
+        dto.setChatAvatarUrl(chat.getChatAvatarUrl());
+        dto.setCreatedAt(chat.getCreatedAt());
+        dto.setLastMessageAt(chat.getLastMessageAt());
+
+        // Конвертируем создателя
+        if (chat.getCreatedBy() != null) {
+            dto.setCreatedBy(userService.convertToDto(chat.getCreatedBy()));
+        }
+
+        // Конвертируем участников
+        if (chat.getParticipants() != null) {
+            dto.setParticipants(chat.getParticipants().stream()
+                .map(userService::convertToDto)
+                .collect(Collectors.toList()));
+        }
+
+        // Устанавливаем последнее сообщение, если есть
+        if (lastMessage != null) {
+            dto.setLastMessage(messageService.convertToDto(lastMessage));
+        }
+
+        return dto;
+    }
+
+    /**
+     * Получить последние сообщения для списка чатов
+     */
+    private Map<Long, Message> getLastMessagesForChats(List<Chat> chats) {
+        List<Long> chatIds = chats.stream()
+            .map(Chat::getId)
+            .collect(Collectors.toList());
+
+        // Получаем последние сообщения для чатов одним запросом
+        List<Message> messages = messageRepository.findLastMessagesByChatIds(chatIds);
+
+        // Сохраняем в мапу для быстрого доступа
+        Map<Long, Message> lastMessagesMap = new HashMap<>();
+        for (Message message : messages) {
+            lastMessagesMap.put(message.getChat().getId(), message);
+        }
+
+        return lastMessagesMap;
+    }
+
+    /**
+     * Уведомить всех участников чата об обновлении
+     */
+    private void notifyParticipantsAboutChatUpdate(Chat chat, String eventType) {
+        Map<String, Object> notification = new HashMap<>();
+        notification.put("eventType", eventType);
+        notification.put("chatId", chat.getId());
+        notification.put("timestamp", System.currentTimeMillis());
+
+        // Отправляем уведомление каждому участнику чата
+        chat.getParticipants().forEach(user -> {
+            // Тема для Kafka - персональные уведомления для конкретного пользователя
+            String topic = "user-notifications." + user.getId();
+            kafkaTemplate.send(topic, notification);
+        });
+    }
+
+    /**
+     * Уведомить конкретного пользователя об обновлении чата
+     */
+    private void notifyUserAboutChatUpdate(Long userId, Long chatId, String eventType) {
+        Map<String, Object> notification = new HashMap<>();
+        notification.put("eventType", eventType);
+        notification.put("chatId", chatId);
+        notification.put("timestamp", System.currentTimeMillis());
+
+        // Персональное уведомление для пользователя
+        String topic = "user-notifications." + userId;
+        kafkaTemplate.send(topic, notification);
     }
 }

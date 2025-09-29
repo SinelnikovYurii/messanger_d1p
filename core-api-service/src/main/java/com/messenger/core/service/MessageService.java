@@ -78,19 +78,19 @@ public class MessageService {
      */
     @Transactional(readOnly = true)
     public List<MessageDto> getChatMessages(Long chatId, Long userId, int page, int size) {
-        Chat chat = chatRepository.findById(chatId)
-            .orElseThrow(() -> new RuntimeException("Чат не найден"));
-
-        // Проверяем доступ к чату
-        boolean isParticipant = chat.getParticipants().stream()
-            .anyMatch(p -> p.getId().equals(userId));
-
-        if (!isParticipant) {
+        // Сначала проверяем, является ли пользователь участником чата
+        if (!chatRepository.isUserParticipant(chatId, userId)) {
             throw new IllegalArgumentException("У вас нет доступа к этому чату");
         }
 
+        // Проверяем существование чата
+        if (!chatRepository.existsById(chatId)) {
+            throw new RuntimeException("Чат не найден");
+        }
+
         Pageable pageable = PageRequest.of(page, size);
-        List<Message> messages = messageRepository.findByChatIdOrderByCreatedAtDesc(chatId, pageable);
+        // Используем оптимизированный запрос с предварительной загрузкой отправителей
+        List<Message> messages = messageRepository.findByChatIdOrderByCreatedAtDescWithSender(chatId, pageable);
 
         return messages.stream()
             .map(this::convertToDto)

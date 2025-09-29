@@ -12,10 +12,11 @@ spring:
     driver-class-name: org.postgresql.Driver
     hikari:
       connection-timeout: 20000
-      maximum-pool-size: 10
-      minimum-idle: 5
+      maximum-pool-size: 20
+      minimum-idle: 10
       idle-timeout: 300000
       max-lifetime: 1200000
+      leak-detection-threshold: 60000
 
   jpa:
     hibernate:
@@ -25,12 +26,25 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        # Оптимизации для решения N+1 проблемы
+        default_batch_fetch_size: 16
+        jdbc.batch_size: 20
+        order_inserts: true
+        order_updates: true
+        jdbc.batch_versioned_data: true
+        # Включаем статистику для мониторинга
+        generate_statistics: true
+        # Отключаем кеширование второго уровня пока что
+        cache.use_second_level_cache: false
+        cache.use_query_cache: false
 
   kafka:
     bootstrap-servers: localhost:9092
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      batch-size: 16384
+      linger-ms: 5
     consumer:
       group-id: core-api-service-group
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -38,11 +52,14 @@ spring:
       properties:
         spring.json.trusted.packages: "*"
 
-# JWT Configuration - убираем символы подчеркивания из секретного ключа
+# JWT Configuration
 jwt:
   secret: SYDLF52DangerKeySYDLF9911894325962389476582937465986348957632897562387ww7sfusdfy9374hguif738794fgu9iw3g4f987uswuhfiuGIUDS9GDUSWHTPIWEHYS0DFS098DF98SDFSHDFUSH9374FISDU87SADASUDGHGHAISD7A9OSD823UGHRUIHGSDW9D78Y238RUIOSWADHFOUWHSSDFDDUHWWF9384FGSD
 
 logging:
   level:
-    com.messenger.core: DEBUG
-    org.springframework.security: DEBUG
+    com.messenger.core: INFO
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.hibernate.stat: DEBUG
