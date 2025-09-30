@@ -21,6 +21,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
 
             log.info("HttpRequestHandler: Processing HTTP request from {}", ctx.channel().remoteAddress());
             log.info("HttpRequestHandler: Request method: {}, URI: {}", request.method(), request.uri());
+            log.info("HttpRequestHandler: Request headers: {}", request.headers());
 
             // Извлекаем токен из query параметров URL
             String uri = request.uri();
@@ -43,6 +44,7 @@ public class HttpRequestHandler extends ChannelInboundHandlerAdapter {
         }
 
         // Всегда передаем сообщение дальше
+        log.info("HttpRequestHandler: Forwarding message to next handler");
         ctx.fireChannelRead(msg);
     }
 

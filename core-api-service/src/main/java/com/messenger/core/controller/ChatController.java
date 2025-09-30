@@ -5,11 +5,13 @@ import com.messenger.core.service.ChatService;
 import com.messenger.core.service.OptimizedDataService;
 import com.messenger.core.config.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/chats")
 @RequiredArgsConstructor
@@ -101,6 +103,31 @@ public class ChatController {
         Long currentUserId = getCurrentUserId(request);
         List<ChatDto> chats = chatService.searchChats(query, currentUserId);
         return ResponseEntity.ok(chats);
+    }
+
+    /**
+     * Получить список ID участников чата (для WebSocket сервера)
+     */
+    @GetMapping("/{chatId}/participants")
+    public ResponseEntity<List<Long>> getChatParticipants(
+            @PathVariable Long chatId,
+            HttpServletRequest request) {
+
+        // Проверяем, является ли запрос от внутреннего сервиса
+        String internalService = request.getHeader("X-Internal-Service");
+        String serviceAuth = request.getHeader("X-Service-Auth");
+
+        if ("websocket-server".equals(internalService) && "internal-service-key".equals(serviceAuth)) {
+            // Запрос от внутреннего сервиса - не требуем авторизации пользователя
+            log.info("📞 [INTERNAL] Processing internal request from {} for chat {}", internalService, chatId);
+            List<Long> participantIds = chatService.getChatParticipantIdsInternal(chatId);
+            return ResponseEntity.ok(participantIds);
+        } else {
+            // Обычный пользовательский запрос - требуем авторизации
+            Long currentUserId = getCurrentUserId(request);
+            List<Long> participantIds = chatService.getChatParticipantIds(chatId, currentUserId);
+            return ResponseEntity.ok(participantIds);
+        }
     }
 
     /**

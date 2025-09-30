@@ -50,7 +50,8 @@ spring:
           predicates:
             - Path=/ws/**
           filters:
-            - WebSocketTokenFilter
+            - RewritePath=/ws/(?<path>.*), /$\{path}
+            - name: WebSocketTokenFilter
 
 # JWT конфигурация
 jwt:

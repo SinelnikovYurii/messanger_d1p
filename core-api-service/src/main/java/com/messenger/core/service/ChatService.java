@@ -9,6 +9,7 @@ import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.MessageRepository;
 import com.messenger.core.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -356,6 +358,49 @@ public class ChatService {
             .filter(chat -> chat.getChatName().toLowerCase().contains(query.toLowerCase()))
             .map(this::convertToDto)
             .collect(Collectors.toList());
+    }
+
+    /**
+     * Получить список ID участников чата (для WebSocket сервера)
+     */
+    @Transactional(readOnly = true)
+    public List<Long> getChatParticipantIds(Long chatId, Long requestingUserId) {
+        // Проверяем существование чата
+        Chat chat = chatRepository.findById(chatId)
+            .orElseThrow(() -> new IllegalArgumentException("Чат с ID " + chatId + " не найден"));
+
+        // Проверяем, что запрашивающий пользователь является участником чата
+        boolean isParticipant = chat.getParticipants().stream()
+            .anyMatch(user -> user.getId().equals(requestingUserId));
+
+        if (!isParticipant) {
+            throw new IllegalArgumentException("Пользователь не является участником данного чата");
+        }
+
+        // Возвращаем список ID всех участников чата
+        return chat.getParticipants().stream()
+            .map(User::getId)
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Получить список ID участников чата (для внутренних сервисов без проверки авторизации)
+     */
+    @Transactional(readOnly = true)
+    public List<Long> getChatParticipantIdsInternal(Long chatId) {
+        // Проверяем существование чата
+        Chat chat = chatRepository.findById(chatId)
+            .orElseThrow(() -> new IllegalArgumentException("Чат с ID " + chatId + " не найден"));
+
+        // Возвращаем список ID всех участников чата без проверки авторизации
+        List<Long> participantIds = chat.getParticipants().stream()
+            .map(User::getId)
+            .collect(Collectors.toList());
+
+        log.info("📋 [INTERNAL] Returning {} participants for chat {}: {}",
+            participantIds.size(), chatId, participantIds);
+
+        return participantIds;
     }
 
     /**

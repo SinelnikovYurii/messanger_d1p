@@ -1,9 +1,6 @@
 package websocket.model;
 
-import io.netty.channel.Channel;
-import lombok.Data;
-
-import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
 import lombok.Data;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
@@ -12,8 +9,18 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserSession {
-    private Long userId;
-    private Channel channel;
+    private String sessionId;
+    private ChannelHandlerContext context;
     private String username;
+    private Long userId;
     private Long currentChatId;
+
+    // Конструктор для совместимости с SessionManager
+    public UserSession(String sessionId, ChannelHandlerContext context, String username, Long userId) {
+        this.sessionId = sessionId;
+        this.context = context;
+        this.username = username;
+        this.userId = userId;
+        this.currentChatId = null;
+    }
 }

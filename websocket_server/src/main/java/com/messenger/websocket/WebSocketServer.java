@@ -1,18 +1,14 @@
 package websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.kafka.core.KafkaTemplate;
 import websocket.service.JwtAuthService;
+import websocket.service.SessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.http.HttpObjectAggregator;
-import io.netty.handler.codec.http.HttpServerCodec;
-import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import lombok.extern.slf4j.Slf4j;
@@ -23,14 +19,20 @@ public class WebSocketServer {
     private final int port;
     private final JwtAuthService jwtAuthService;
     private final ObjectMapper objectMapper;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final SessionManager sessionManager;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private ChannelFuture serverChannel;
 
-    public WebSocketServer(int port, JwtAuthService jwtAuthService, ObjectMapper objectMapper) {
+    public WebSocketServer(int port, JwtAuthService jwtAuthService, ObjectMapper objectMapper, KafkaTemplate<String, String> kafkaTemplate, SessionManager sessionManager) {
         this.port = port;
         this.jwtAuthService = jwtAuthService;
         this.objectMapper = objectMapper;
+        this.kafkaTemplate = kafkaTemplate;
+        this.sessionManager = sessionManager;
+
+        log.info("🔧 [WEBSOCKET] WebSocket server initialized with Kafka integration");
     }
 
     public void start() throws InterruptedException {
@@ -42,21 +44,10 @@ public class WebSocketServer {
             bootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
                     .handler(new LoggingHandler(LogLevel.INFO))
-                    .childHandler(new ChannelInitializer<SocketChannel>() {
-                        @Override
-                        protected void initChannel(SocketChannel ch) {
-                            ChannelPipeline pipeline = ch.pipeline();
-                            pipeline.addLast(new HttpServerCodec());
-                            pipeline.addLast(new HttpObjectAggregator(8192));
-                            // Добавляем обработчик для извлечения токена из URL
-                            pipeline.addLast(new websocket.handler.HttpRequestHandler());
-                            pipeline.addLast(new WebSocketServerProtocolHandler("/ws/chat", null, true));
-                            pipeline.addLast(new websocket.handler.WebSocketFrameHandler(jwtAuthService, objectMapper));
-                        }
-                    });
+                    .childHandler(new WebSocketServerInitializer(jwtAuthService, objectMapper, kafkaTemplate, sessionManager));
 
             serverChannel = bootstrap.bind(port).sync();
-            log.info("WebSocket server started on port {}", port);
+            log.info("✅ [WEBSOCKET] WebSocket server started on port {} with Kafka integration", port);
 
             serverChannel.channel().closeFuture().sync();
         } finally {

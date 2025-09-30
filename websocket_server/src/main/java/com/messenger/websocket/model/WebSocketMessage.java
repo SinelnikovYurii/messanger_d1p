@@ -34,18 +34,6 @@ public class WebSocketMessage {
         this.type = mt;
     }
 
-    public enum MessageType {
-        AUTH,           // Аутентификация
-        AUTH_SUCCESS,   // Успешная аутентификация
-        CHAT_MESSAGE,   // Сообщение в чате
-        SYSTEM_MESSAGE, // Системное сообщение
-        USER_JOINED,    // Пользователь присоединился
-        USER_LEFT,      // Пользователь покинул чат
-        PING,           // Ping для проверки соединения
-        PONG,           // Pong ответ
-        ERROR           // Ошибка
-    }
-
     // Конструктор для быстрого создания сообщений
     public WebSocketMessage(MessageType type, String content) {
         this.type = type;

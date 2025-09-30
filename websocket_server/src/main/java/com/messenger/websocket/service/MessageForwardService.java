@@ -12,6 +12,8 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.stereotype.Service;
 import websocket.model.WebSocketMessage;
+import websocket.model.MessageType;
+
 
 import java.time.Duration;
 import java.util.Collections;
@@ -68,7 +70,7 @@ public class MessageForwardService {
     @SuppressWarnings("unchecked")
     private void handleMessageFromKafka(String key, String message) {
         try {
-            log.debug("Received message from Kafka: key={}, message={}", key, message);
+            log.info("📨 [KAFKA] Received message from Kafka - Key: {}, Message: {}", key, message);
 
             Map<String, Object> messageData = objectMapper.readValue(message, Map.class);
 
@@ -76,54 +78,68 @@ public class MessageForwardService {
             if (key != null && !key.isEmpty()) {
                 try {
                     chatId = Long.valueOf(key);
+                    log.debug("🔑 [KAFKA] ChatId from key: {}", chatId);
                 } catch (NumberFormatException e) {
-                    log.warn("Invalid key format: {}", key);
+                    log.warn("⚠️ [KAFKA] Invalid key format: {}", key);
                 }
             }
 
             if (chatId == null && messageData.containsKey("chatId")) {
                 chatId = ((Number) messageData.get("chatId")).longValue();
+                log.debug("🔑 [KAFKA] ChatId from message body: {}", chatId);
             }
 
             if (chatId == null) {
-                log.warn("Could not determine chatId from message: {}", message);
+                log.warn("❌ [KAFKA] Could not determine chatId from message: {}", message);
                 return;
             }
 
             // Создаем WebSocketMessage правильно - передаем String content вместо Map
             WebSocketMessage wsMessage = new WebSocketMessage();
-            wsMessage.setType(WebSocketMessage.MessageType.CHAT_MESSAGE);
+            wsMessage.setType(MessageType.CHAT_MESSAGE);
             wsMessage.setContent((String) messageData.get("content"));
             wsMessage.setChatId(chatId);
             wsMessage.setUserId(messageData.containsKey("senderId") ?
                 ((Number) messageData.get("senderId")).longValue() : null);
             wsMessage.setUsername((String) messageData.get("senderUsername"));
 
+            log.info("🔄 [KAFKA] Processing message for chat {} from user {} (ID: {}): '{}'",
+                chatId, wsMessage.getUsername(), wsMessage.getUserId(), wsMessage.getContent());
+
             // Получаем каналы участников чата
             List<Channel> channels = sessionManager.getChatChannels(chatId);
+            log.info("📡 [SESSION] Found {} active channels for chat {}", channels.size(), chatId);
+
             if (!channels.isEmpty()) {
                 String jsonMessage = objectMapper.writeValueAsString(wsMessage);
+                int successCount = 0;
+                int failureCount = 0;
 
                 for (Channel channel : channels) {
                     try {
                         if (channel.isActive()) {
                             channel.writeAndFlush(new TextWebSocketFrame(jsonMessage));
-                            log.debug("Sent message to channel: {}", channel.id());
+                            successCount++;
+                            log.debug("✅ [FORWARD] Sent message to channel: {}", channel.id().asShortText());
                         } else {
-                            log.warn("Channel is not active: {}", channel.id());
+                            failureCount++;
+                            log.warn("⚠️ [FORWARD] Channel is not active: {}", channel.id().asShortText());
                         }
                     } catch (Exception e) {
-                        log.error("Failed to send message to channel: {}", channel.id(), e);
+                        failureCount++;
+                        log.error("❌ [FORWARD] Failed to send message to channel {}: {}",
+                            channel.id().asShortText(), e.getMessage(), e);
                     }
                 }
 
-                log.info("Forwarded message to {} channels for chat {}", channels.size(), chatId);
+                log.info("📊 [FORWARD] Message forwarding completed for chat {} - Success: {}, Failures: {}",
+                    chatId, successCount, failureCount);
             } else {
-                log.debug("No active channels for chat {}", chatId);
+                log.info("📭 [FORWARD] No active channels for chat {} - message will not be delivered", chatId);
             }
 
         } catch (Exception e) {
-            log.error("Error processing message from Kafka: {}", message, e);
+            log.error("❌ [KAFKA] Error processing message from Kafka: {}", message, e);
         }
     }
 

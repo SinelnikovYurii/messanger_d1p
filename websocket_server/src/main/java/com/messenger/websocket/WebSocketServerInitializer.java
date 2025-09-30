@@ -1,6 +1,7 @@
 package websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.kafka.core.KafkaTemplate;
 
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
@@ -16,15 +17,20 @@ import io.netty.handler.codec.http.cors.CorsHandler;
 import websocket.handler.WebSocketFrameHandler;
 import websocket.handler.HttpRequestHandler;
 import websocket.service.JwtAuthService;
+import websocket.service.SessionManager;
 
 public class WebSocketServerInitializer extends ChannelInitializer<SocketChannel> {
 
     private final JwtAuthService jwtAuthService;
     private final ObjectMapper objectMapper;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final SessionManager sessionManager;
 
-    public WebSocketServerInitializer(JwtAuthService jwtAuthService, ObjectMapper objectMapper) {
+    public WebSocketServerInitializer(JwtAuthService jwtAuthService, ObjectMapper objectMapper, KafkaTemplate<String, String> kafkaTemplate, SessionManager sessionManager) {
         this.jwtAuthService = jwtAuthService;
         this.objectMapper = objectMapper;
+        this.kafkaTemplate = kafkaTemplate;
+        this.sessionManager = sessionManager; // Используем переданный Spring bean
     }
 
     @Override
@@ -43,7 +49,11 @@ public class WebSocketServerInitializer extends ChannelInitializer<SocketChannel
         pipeline.addLast(new HttpObjectAggregator(65536));
         pipeline.addLast(new HttpRequestHandler());
         pipeline.addLast(new WebSocketServerCompressionHandler());
-        pipeline.addLast(new WebSocketServerProtocolHandler("/chat", null, true));
-        pipeline.addLast(new WebSocketFrameHandler(jwtAuthService, objectMapper));
+
+        WebSocketServerProtocolHandler wsHandler = new WebSocketServerProtocolHandler("/ws/chat", null, true, 65536, false, true);
+        pipeline.addLast(wsHandler);
+
+
+        pipeline.addLast(new WebSocketFrameHandler(jwtAuthService, objectMapper, sessionManager, kafkaTemplate));
     }
 }
