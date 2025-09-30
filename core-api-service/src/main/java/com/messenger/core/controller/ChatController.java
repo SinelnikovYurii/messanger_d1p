@@ -119,7 +119,7 @@ public class ChatController {
 
         if ("websocket-server".equals(internalService) && "internal-service-key".equals(serviceAuth)) {
             // Запрос от внутреннего сервиса - не требуем авторизации пользователя
-            log.info("📞 [INTERNAL] Processing internal request from {} for chat {}", internalService, chatId);
+            log.info("[INTERNAL] Processing internal request from {} for chat {}", internalService, chatId);
             List<Long> participantIds = chatService.getChatParticipantIdsInternal(chatId);
             return ResponseEntity.ok(participantIds);
         } else {

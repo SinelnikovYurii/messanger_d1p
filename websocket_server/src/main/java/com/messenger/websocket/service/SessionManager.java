@@ -28,7 +28,7 @@ public class SessionManager {
         // Удаляем предыдущую сессию пользователя, если она существует
         String existingSessionId = userIdToSessionId.get(userId);
         if (existingSessionId != null) {
-            log.info("🔄 [SESSION] Removing existing session for user {} (ID: {}): {}", username, userId, existingSessionId);
+            log.info("[SESSION] Removing existing session for user {} (ID: {}): {}", username, userId, existingSessionId);
             removeSession(existingSessionId);
         }
 
@@ -36,19 +36,19 @@ public class SessionManager {
         sessions.put(sessionId, session);
         userIdToSessionId.put(userId, sessionId);
 
-        log.info("✅ [SESSION] User session added: {} (userId: {}, sessionId: {})", username, userId, sessionId);
-        log.info("📊 [SESSION] Total active sessions: {}", sessions.size());
+        log.info("[SESSION] User session added: {} (userId: {}, sessionId: {})", username, userId, sessionId);
+        log.info("[SESSION] Total active sessions: {}", sessions.size());
     }
 
     public void removeSession(String sessionId) {
         UserSession session = sessions.remove(sessionId);
         if (session != null) {
             userIdToSessionId.remove(session.getUserId());
-            log.info("❌ [SESSION] User session removed: {} (userId: {}, sessionId: {})",
+            log.info("[SESSION] User session removed: {} (userId: {}, sessionId: {})",
                     session.getUsername(), session.getUserId(), sessionId);
-            log.info("📊 [SESSION] Total active sessions: {}", sessions.size());
+            log.info("[SESSION] Total active sessions: {}", sessions.size());
         } else {
-            log.warn("⚠️ [SESSION] Attempted to remove non-existent session: {}", sessionId);
+            log.warn("[SESSION] Attempted to remove non-existent session: {}", sessionId);
         }
     }
 
@@ -89,16 +89,16 @@ public class SessionManager {
      * ИСПРАВЛЕНО: теперь получает реальных участников чата из базы данных с fallback
      */
     public List<io.netty.channel.Channel> getChatChannels(Long chatId) {
-        log.info("🔍 [SESSION] Getting channels for chat {} - fetching real participants from database", chatId);
+        log.info("[SESSION] Getting channels for chat {} - fetching real participants from database", chatId);
 
         try {
             // Получаем список участников чата из базы данных
             List<Long> participantIds = chatParticipantService.getChatParticipants(chatId);
-            log.info("👥 [SESSION] Found {} participants for chat {}: {}", participantIds.size(), chatId, participantIds);
+            log.info("[SESSION] Found {} participants for chat {}: {}", participantIds.size(), chatId, participantIds);
 
             // Если нет участников (ошибка API или пустой чат), используем fallback
             if (participantIds.isEmpty()) {
-                log.warn("⚠️ [SESSION] No participants found for chat {}, using fallback (all connected users)", chatId);
+                log.warn("[SESSION] No participants found for chat {}, using fallback (all connected users)", chatId);
                 return getAllActiveChannels();
             }
 
@@ -111,38 +111,38 @@ public class SessionManager {
                         if (session != null) {
                             io.netty.channel.Channel channel = session.getContext().channel();
                             if (channel != null && channel.isActive()) {
-                                log.debug("✅ [SESSION] Found active channel for user {} (session: {})",
+                                log.debug("[SESSION] Found active channel for user {} (session: {})",
                                     userId, sessionId);
                                 return channel;
                             } else {
-                                log.debug("⚠️ [SESSION] User {} has inactive channel (session: {})",
+                                log.debug("[SESSION] User {} has inactive channel (session: {})",
                                     userId, sessionId);
                             }
                         } else {
-                            log.debug("⚠️ [SESSION] User {} has no session data", userId);
+                            log.debug("[SESSION] User {} has no session data", userId);
                         }
                     } else {
-                        log.debug("📭 [SESSION] User {} is not connected", userId);
+                        log.debug("[SESSION] User {} is not connected", userId);
                     }
                     return null;
                 })
                 .filter(channel -> channel != null)
                 .collect(Collectors.toList());
 
-            log.info("📡 [SESSION] Found {} active channels for {} participants in chat {}",
+            log.info("[SESSION] Found {} active channels for {} participants in chat {}",
                 channels.size(), participantIds.size(), chatId);
 
             // Логируем детали каналов
             for (int i = 0; i < channels.size(); i++) {
-                log.debug("📄 [SESSION] Active channel {}: {}", i + 1, channels.get(i).id().asShortText());
+                log.debug("[SESSION] Active channel {}: {}", i + 1, channels.get(i).id().asShortText());
             }
 
             return channels;
 
         } catch (Exception e) {
-            log.error("❌ [SESSION] Error getting chat channels for chat {}: {}", chatId, e.getMessage(), e);
+            log.error("[SESSION] Error getting chat channels for chat {}: {}", chatId, e.getMessage(), e);
             // В случае ошибки используем fallback - все активные каналы
-            log.warn("⚠️ [SESSION] Using fallback - returning all active channels for chat {}", chatId);
+            log.warn("[SESSION] Using fallback - returning all active channels for chat {}", chatId);
             return getAllActiveChannels();
         }
     }
@@ -151,7 +151,7 @@ public class SessionManager {
      * Fallback метод - получить все активные каналы
      */
     private List<io.netty.channel.Channel> getAllActiveChannels() {
-        log.info("🔄 [SESSION] Using fallback - getting all active channels");
+        log.info("[SESSION] Using fallback - getting all active channels");
 
         List<io.netty.channel.Channel> channels = sessions.values().stream()
             .map(session -> {

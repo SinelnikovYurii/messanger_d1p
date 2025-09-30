@@ -21,7 +21,7 @@ public class KafkaMessageListener {
     @KafkaListener(topics = "chat-messages", groupId = "websocket-service-group")
     public void handleChatMessage(ConsumerRecord<String, String> record) {
         try {
-            log.info("📨 [KAFKA] Received message from Kafka: key={}, value={}", record.key(), record.value());
+            log.info("[KAFKA] Received message from Kafka: key={}, value={}", record.key(), record.value());
 
 
             Map<String, Object> messageData = objectMapper.readValue(record.value(), Map.class);
@@ -41,15 +41,15 @@ public class KafkaMessageListener {
             }
 
             if (chatId != null) {
-                log.info("📡 [KAFKA] Broadcasting message to chat {}: {}", chatId, record.value());
+                log.info("[KAFKA] Broadcasting message to chat {}: {}", chatId, record.value());
                 sessionManager.broadcastMessageToChat(chatId, messageData);
-                log.info("✅ [KAFKA] Message broadcast completed for chat {}", chatId);
+                log.info("[KAFKA] Message broadcast completed for chat {}", chatId);
             } else {
-                log.warn("❌ [KAFKA] Could not determine chatId for message: {}", record.value());
+                log.warn("[KAFKA] Could not determine chatId for message: {}", record.value());
             }
 
         } catch (Exception e) {
-            log.error("❌ [KAFKA] Error processing message: {}", e.getMessage(), e);
+            log.error("[KAFKA] Error processing message: {}", e.getMessage(), e);
         }
     }
 }

@@ -32,7 +32,7 @@ public class WebSocketServer {
         this.kafkaTemplate = kafkaTemplate;
         this.sessionManager = sessionManager;
 
-        log.info("🔧 [WEBSOCKET] WebSocket server initialized with Kafka integration");
+        log.info("[WEBSOCKET] WebSocket server initialized with Kafka integration");
     }
 
     public void start() throws InterruptedException {
@@ -47,7 +47,7 @@ public class WebSocketServer {
                     .childHandler(new WebSocketServerInitializer(jwtAuthService, objectMapper, kafkaTemplate, sessionManager));
 
             serverChannel = bootstrap.bind(port).sync();
-            log.info("✅ [WEBSOCKET] WebSocket server started on port {} with Kafka integration", port);
+            log.info("[WEBSOCKET] WebSocket server started on port {} with Kafka integration", port);
 
             serverChannel.channel().closeFuture().sync();
         } finally {

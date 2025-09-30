@@ -51,7 +51,7 @@ public class WebSocketConfig {
     @PostConstruct
     public void startWebSocketServer() {
         try {
-            log.info("🚀 [CONFIG] Initializing WebSocket server with Kafka integration...");
+            log.info("[CONFIG] Initializing WebSocket server with Kafka integration...");
 
             webSocketServer = new websocket.WebSocketServer(webSocketPort, jwtAuthService, objectMapper(), kafkaTemplate, sessionManager());
 
@@ -60,9 +60,9 @@ public class WebSocketConfig {
                     webSocketServer.start();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    log.info("🛑 [CONFIG] WebSocket server interrupted");
+                    log.info("[CONFIG] WebSocket server interrupted");
                 } catch (Exception e) {
-                    log.error("❌ [CONFIG] Failed to start WebSocket server", e);
+                    log.error("[CONFIG] Failed to start WebSocket server", e);
                 }
             });
 
@@ -72,32 +72,32 @@ public class WebSocketConfig {
 
             messageForwardService.startListening();
 
-            log.info("✅ [CONFIG] WebSocket server configuration completed on port {}", webSocketPort);
+            log.info("[CONFIG] WebSocket server configuration completed on port {}", webSocketPort);
 
         } catch (Exception e) {
-            log.error("❌ [CONFIG] Failed to initialize WebSocket server", e);
+            log.error("[CONFIG] Failed to initialize WebSocket server", e);
         }
     }
 
     @PreDestroy
     public void stopWebSocketServer() {
-        log.info("🛑 [CONFIG] Shutting down WebSocket server...");
+        log.info("[CONFIG] Shutting down WebSocket server...");
 
         if (messageForwardService != null) {
             try {
                 messageForwardService.stop();
-                log.info("✅ [CONFIG] MessageForwardService stopped");
+                log.info("[CONFIG] MessageForwardService stopped");
             } catch (Exception e) {
-                log.error("❌ [CONFIG] Error stopping MessageForwardService", e);
+                log.error("[CONFIG] Error stopping MessageForwardService", e);
             }
         }
 
         if (webSocketServer != null) {
             try {
                 webSocketServer.stop();
-                log.info("✅ [CONFIG] WebSocket server stopped");
+                log.info("[CONFIG] WebSocket server stopped");
             } catch (Exception e) {
-                log.error("❌ [CONFIG] Error stopping WebSocket server", e);
+                log.error("[CONFIG] Error stopping WebSocket server", e);
             }
         }
 
@@ -105,6 +105,6 @@ public class WebSocketConfig {
             webSocketThread.interrupt();
         }
 
-        log.info("✅ [CONFIG] WebSocket server shutdown completed");
+        log.info("[CONFIG] WebSocket server shutdown completed");
     }
 }

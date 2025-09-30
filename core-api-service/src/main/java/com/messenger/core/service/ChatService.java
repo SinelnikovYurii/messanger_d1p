@@ -397,7 +397,7 @@ public class ChatService {
             .map(User::getId)
             .collect(Collectors.toList());
 
-        log.info("📋 [INTERNAL] Returning {} participants for chat {}: {}",
+        log.info("[INTERNAL] Returning {} participants for chat {}: {}",
             participantIds.size(), chatId, participantIds);
 
         return participantIds;

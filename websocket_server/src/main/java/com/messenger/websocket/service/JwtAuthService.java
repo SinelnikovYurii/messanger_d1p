@@ -17,7 +17,7 @@ public class JwtAuthService {
 
     public JwtAuthService(@Value("${jwt.secret}") String secret) {
         this.secretKey = secret;
-        log.info("🔧 [JWT] JwtAuthService initialized with secret key length: {}", secret.length());
+        log.info("[JWT] JwtAuthService initialized with secret key length: {}", secret.length());
     }
 
     private SecretKey getSigningKey() {
@@ -26,25 +26,25 @@ public class JwtAuthService {
 
     public boolean validateToken(String token) {
         try {
-            log.info("🔑 [JWT] Validating token: {}...", token.substring(0, Math.min(token.length(), 20)));
-            log.info("🔑 [JWT] Using secret key length: {}", secretKey.length());
+            log.info("[JWT] Validating token: {}...", token.substring(0, Math.min(token.length(), 20)));
+            log.info("[JWT] Using secret key length: {}", secretKey.length());
 
             Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token);
 
-            log.info("✅ [JWT] Token validation successful");
+            log.info("[JWT] Token validation successful");
             return true;
         } catch (Exception e) {
-            log.error("❌ [JWT] Invalid JWT token: {} - {}", e.getClass().getSimpleName(), e.getMessage());
+            log.error("[JWT] Invalid JWT token: {} - {}", e.getClass().getSimpleName(), e.getMessage());
             return false;
         }
     }
 
     public String getUsernameFromToken(String token) {
         try {
-            log.info("🔑 [JWT] Extracting username from token");
+            log.info("[JWT] Extracting username from token");
             Claims claims = Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())
                 .build()
@@ -52,17 +52,17 @@ public class JwtAuthService {
                 .getBody();
 
             String username = claims.getSubject();
-            log.info("✅ [JWT] Extracted username: {}", username);
+            log.info("[JWT] Extracted username: {}", username);
             return username;
         } catch (Exception e) {
-            log.error("❌ [JWT] Failed to extract username from token: {}", e.getMessage());
+            log.error("[JWT] Failed to extract username from token: {}", e.getMessage());
             return null;
         }
     }
 
     public Long getUserIdFromToken(String token) {
         try {
-            log.info("🔑 [JWT] Extracting user ID from token");
+            log.info("[JWT] Extracting user ID from token");
             Claims claims = Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())
                 .build()
@@ -79,10 +79,10 @@ public class JwtAuthService {
                 userId = Long.valueOf((String) idClaim);
             }
 
-            log.info("✅ [JWT] Extracted user ID: {}", userId);
+            log.info("[JWT] Extracted user ID: {}", userId);
             return userId;
         } catch (Exception e) {
-            log.error("❌ [JWT] Failed to extract user ID from token: {}", e.getMessage());
+            log.error("[JWT] Failed to extract user ID from token: {}", e.getMessage());
             return null;
         }
     }

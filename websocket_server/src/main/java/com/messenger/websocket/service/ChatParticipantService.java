@@ -2,6 +2,7 @@ package websocket.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
@@ -20,7 +21,8 @@ public class ChatParticipantService {
     @Autowired
     private RestTemplate restTemplate;
 
-    private final String CORE_API_URL = "http://localhost:8081"; // URL core-api-service
+    @Value("${core.api.base-url:http://localhost:8082}")
+    private String coreApiBaseUrl;
 
     /**
      * Получить список ID участников чата из core-api-service
@@ -28,17 +30,21 @@ public class ChatParticipantService {
      */
     public List<Long> getChatParticipants(Long chatId) {
         try {
-            log.info("📞 [CHAT-PARTICIPANT] Requesting participants for chat {} from core-api", chatId);
+            log.info("📞 [CHAT-PARTICIPANT] Requesting participants for chat {} from core-api (base URL: {})", chatId, coreApiBaseUrl);
 
-            String url = CORE_API_URL + "/api/chats/" + chatId + "/participants";
+            String url = coreApiBaseUrl + "/api/chats/" + chatId + "/participants";
+            log.info("🔗 [CHAT-PARTICIPANT] Full URL: {}", url);
 
             // Создаем заголовки для внутреннего сервиса
             HttpHeaders headers = new HttpHeaders();
             headers.set("X-Internal-Service", "websocket-server"); // Заголовок для внутренних сервисов
             headers.set("X-Service-Auth", "internal-service-key"); // Дополнительная авторизация
 
+            log.info("📋 [CHAT-PARTICIPANT] Sending headers: X-Internal-Service=websocket-server, X-Service-Auth=internal-service-key");
+
             HttpEntity<?> entity = new HttpEntity<>(headers);
 
+            log.info("⏳ [CHAT-PARTICIPANT] Making HTTP request to core-api...");
             ResponseEntity<List<Long>> response = restTemplate.exchange(
                 url,
                 HttpMethod.GET,

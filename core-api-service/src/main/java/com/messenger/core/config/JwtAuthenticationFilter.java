@@ -42,6 +42,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         log.info("Processing request: {} {}", request.getMethod(), request.getRequestURI());
         log.info("Authorization header: {}", request.getHeader("Authorization"));
         log.info("X-Gateway-Request header: {}", request.getHeader("X-Gateway-Request"));
+
+        // Проверяем заголовки внутренних сервисов
+        String internalService = request.getHeader("X-Internal-Service");
+        String serviceAuth = request.getHeader("X-Service-Auth");
+
+        log.info("X-Internal-Service header: {}", internalService);
+        log.info("X-Service-Auth header: {}", serviceAuth);
+
+        // Если это запрос от внутреннего сервиса - пропускаем JWT проверку
+        if ("websocket-server".equals(internalService) && "internal-service-key".equals(serviceAuth)) {
+            log.info("Internal service request detected - bypassing JWT authentication");
+
+            // Создаем специальную аутентификацию для внутреннего сервиса
+            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+            authorities.add(new SimpleGrantedAuthority("ROLE_INTERNAL_SERVICE"));
+
+            UsernamePasswordAuthenticationToken authentication =
+                    new UsernamePasswordAuthenticationToken("internal-service", null, authorities);
+            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+            log.info("Set internal service authentication with role: ROLE_INTERNAL_SERVICE");
+
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         log.info("All headers: ");
         request.getHeaderNames().asIterator().forEachRemaining(headerName ->
             log.info("  {}: {}", headerName, request.getHeader(headerName)));
