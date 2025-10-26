@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -53,6 +54,15 @@ public class MessageService {
         message.setMessageType(request.getMessageType());
         message.setSender(sender);
         message.setChat(chat);
+
+        // Устанавливаем поля файла если есть
+        if (request.getFileUrl() != null) {
+            message.setFileUrl(request.getFileUrl());
+            message.setFileName(request.getFileName());
+            message.setFileSize(request.getFileSize());
+            message.setMimeType(request.getMimeType());
+            message.setThumbnailUrl(request.getThumbnailUrl());
+        }
 
         // Если это ответ на другое сообщение
         if (request.getReplyToMessageId() != null) {
@@ -170,17 +180,26 @@ public class MessageService {
      * Уведомить о новом сообщении через Kafka
      */
     private void notifyAboutNewMessage(Message message) {
-        Map<String, Object> notification = Map.of(
-            "type", "NEW_MESSAGE",
-            "messageId", message.getId(),
-            "chatId", message.getChat().getId(),
-            "senderId", message.getSender().getId(),
-            "content", message.getContent(),
-            "messageType", message.getMessageType(),
-            "timestamp", message.getCreatedAt()
-        );
+        Map<String, Object> notification = new HashMap<>();
+        notification.put("type", "NEW_MESSAGE");
+        notification.put("messageId", message.getId());
+        notification.put("chatId", message.getChat().getId());
+        notification.put("senderId", message.getSender().getId());
+        notification.put("senderUsername", message.getSender().getUsername());
+        notification.put("content", message.getContent());
+        notification.put("messageType", message.getMessageType().toString());
+        notification.put("timestamp", message.getCreatedAt());
 
-        kafkaTemplate.send("chat-messages", notification);
+        // Добавляем метаданные файлов если есть
+        if (message.getFileUrl() != null) {
+            notification.put("fileUrl", message.getFileUrl());
+            notification.put("fileName", message.getFileName());
+            notification.put("fileSize", message.getFileSize());
+            notification.put("mimeType", message.getMimeType());
+            notification.put("thumbnailUrl", message.getThumbnailUrl());
+        }
+
+        kafkaTemplate.send("chat-messages", message.getChat().getId().toString(), notification);
     }
 
     /**
@@ -195,7 +214,8 @@ public class MessageService {
             "timestamp", LocalDateTime.now()
         );
 
-        kafkaTemplate.send("chat-messages", notification);
+        // ИСПРАВЛЕНО: Отправляем с chatId в качестве ключа для правильной маршрутизации
+        kafkaTemplate.send("chat-messages", message.getChat().getId().toString(), notification);
     }
 
     /**
@@ -210,6 +230,13 @@ public class MessageService {
         dto.setCreatedAt(message.getCreatedAt());
         dto.setUpdatedAt(message.getUpdatedAt());
         dto.setChatId(message.getChat().getId());
+
+        // Добавляем поля файлов
+        dto.setFileUrl(message.getFileUrl());
+        dto.setFileName(message.getFileName());
+        dto.setFileSize(message.getFileSize());
+        dto.setMimeType(message.getMimeType());
+        dto.setThumbnailUrl(message.getThumbnailUrl());
 
         if (message.getSender() != null) {
             dto.setSender(userService.convertToDto(message.getSender()));

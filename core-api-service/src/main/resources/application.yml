@@ -5,6 +5,14 @@ spring:
   application:
     name: core-api-service
 
+  # Конфигурация для загрузки файлов
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 50MB
+      file-size-threshold: 2KB
+
   datasource:
     url: jdbc:postgresql://localhost:5432/postgres
     username: postgres
@@ -51,6 +59,13 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
+
+# Конфигурация хранения файлов
+file:
+  upload:
+    dir: ./uploads
+    max-size: 52428800  # 50MB в байтах
+    allowed-types: image/jpeg,image/png,image/gif,image/webp,image/bmp,image/tiff,image/svg+xml,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,text/html,text/xml,application/json,application/xml,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/x-7z-compressed,application/gzip,application/x-tar,video/mp4,video/avi,video/quicktime,video/x-msvideo,audio/mpeg,audio/wav,audio/ogg,audio/mp3,application/octet-stream
 
 # JWT Configuration
 jwt:

@@ -37,7 +37,17 @@ public class MessageKafkaListener {
             // Парсим сообщение из JSON
             Map<String, Object> messageData = objectMapper.readValue(record.value(), Map.class);
 
-            // Извлекаем данные
+            // Проверяем тип события
+            String eventType = (String) messageData.get("type");
+
+            // Если это NEW_MESSAGE - это уведомление о сообщении, которое УЖЕ сохранено в БД
+            // Поэтому НЕ создаём дубликат
+            if ("NEW_MESSAGE".equals(eventType)) {
+                log.info("💡 [KAFKA] Received NEW_MESSAGE notification - message already saved in DB, skipping");
+                return;
+            }
+
+            // Извлекаем данные (только для сообщений от WebSocket, которые ещё не сохранены)
             Long senderId = ((Number) messageData.get("senderId")).longValue();
             Long chatId = ((Number) messageData.get("chatId")).longValue();
             String content = (String) messageData.get("content");

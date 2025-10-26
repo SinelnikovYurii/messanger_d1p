@@ -38,6 +38,22 @@ public class Message {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    // Поля для файлов
+    @Column(name = "file_url")
+    private String fileUrl;
+
+    @Column(name = "file_name")
+    private String fileName;
+
+    @Column(name = "file_size")
+    private Long fileSize;
+
+    @Column(name = "mime_type")
+    private String mimeType;
+
+    @Column(name = "thumbnail_url")
+    private String thumbnailUrl;
+
     // Отправитель сообщения
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sender_id", nullable = false)

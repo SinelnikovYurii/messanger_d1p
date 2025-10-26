@@ -21,9 +21,13 @@ public class MessageController {
     private final MessageService messageService;
 
     @GetMapping
-    public Flux<Object> getMessages(@PathVariable Long chatId, ServerWebExchange exchange) {
+    public Flux<Object> getMessages(
+            @PathVariable Long chatId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size,
+            ServerWebExchange exchange) {
         String token = extractToken(exchange);
-        return messageService.getChatMessages(chatId, token);
+        return messageService.getChatMessages(chatId, token, page, size);
     }
 
     @PostMapping

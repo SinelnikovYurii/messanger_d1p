@@ -231,15 +231,47 @@ public class SessionManager {
             // Устанавливаем текущее время вместо парсинга
             wsMessage.setTimestamp(LocalDateTime.now());
 
+            // Устанавливаем ID сообщения если есть
+            if (messageData.containsKey("messageId")) {
+                wsMessage.setId(((Number) messageData.get("messageId")).longValue());
+            }
+
+            // Устанавливаем данные отправителя
             if (messageData.containsKey("senderId")) {
                 wsMessage.setUserId(((Number) messageData.get("senderId")).longValue());
+                wsMessage.setSenderId(((Number) messageData.get("senderId")).longValue());
             }
             if (messageData.containsKey("senderUsername")) {
                 wsMessage.setUsername((String) messageData.get("senderUsername"));
+                wsMessage.setSenderUsername((String) messageData.get("senderUsername"));
             }
 
-            log.info("📄 [BROADCAST] Created WebSocket message: type={}, chatId={}, senderId={}, content='{}'",
-                    wsMessage.getType(), wsMessage.getChatId(), wsMessage.getUserId(), wsMessage.getContent());
+            // ВАЖНО: Добавляем тип сообщения (TEXT, IMAGE, FILE)
+            if (messageData.containsKey("messageType")) {
+                wsMessage.setMessageType((String) messageData.get("messageType"));
+            }
+
+            // ВАЖНО: Добавляем метаданные файлов если есть
+            if (messageData.containsKey("fileUrl")) {
+                wsMessage.setFileUrl((String) messageData.get("fileUrl"));
+                log.info("📎 [BROADCAST] Message contains file: {}", messageData.get("fileUrl"));
+            }
+            if (messageData.containsKey("fileName")) {
+                wsMessage.setFileName((String) messageData.get("fileName"));
+            }
+            if (messageData.containsKey("fileSize")) {
+                wsMessage.setFileSize(((Number) messageData.get("fileSize")).longValue());
+            }
+            if (messageData.containsKey("mimeType")) {
+                wsMessage.setMimeType((String) messageData.get("mimeType"));
+            }
+            if (messageData.containsKey("thumbnailUrl")) {
+                wsMessage.setThumbnailUrl((String) messageData.get("thumbnailUrl"));
+            }
+
+            log.info("📄 [BROADCAST] Created WebSocket message: type={}, messageType={}, chatId={}, senderId={}, content='{}', fileUrl={}",
+                    wsMessage.getType(), wsMessage.getMessageType(), wsMessage.getChatId(), wsMessage.getUserId(),
+                    wsMessage.getContent(), wsMessage.getFileUrl());
 
             // Получаем все активные каналы (в реальном приложении нужно получать участников чата из БД)
             List<io.netty.channel.Channel> channels = getChatChannels(chatId);

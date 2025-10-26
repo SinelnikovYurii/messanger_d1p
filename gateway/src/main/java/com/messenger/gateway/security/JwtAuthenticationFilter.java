@@ -46,14 +46,26 @@ public class JwtAuthenticationFilter implements WebFilter {
         }
 
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        String token = null;
 
-        // Если нет заголовка Authorization, продолжаем без аутентификации
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            logger.debug("No Bearer token found for path: {}", path);
-            return chain.filter(exchange);
+        // Проверяем токен в заголовке Authorization
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
         }
 
-        String token = authHeader.substring(7);
+        // Если токена нет в заголовке, проверяем query параметр (для GET запросов файлов/изображений)
+        if (token == null) {
+            token = request.getQueryParams().getFirst("token");
+            if (token != null) {
+                logger.debug("Found token in query parameter for path: {}", path);
+            }
+        }
+
+        // Если нет токена вообще, продолжаем без аутентификации
+        if (token == null) {
+            logger.debug("No token found for path: {}", path);
+            return chain.filter(exchange);
+        }
 
         try {
             if (jwtService.isTokenValid(token)) {

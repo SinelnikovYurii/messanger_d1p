@@ -68,6 +68,9 @@ user-service:
 chat-service:
   url: http://localhost:8082
 
+message-service:
+  url: http://localhost:8082
+
 logging:
   level:
     com.messenger.gateway: DEBUG

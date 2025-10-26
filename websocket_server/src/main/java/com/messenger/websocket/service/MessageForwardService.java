@@ -94,17 +94,54 @@ public class MessageForwardService {
                 return;
             }
 
-            // Создаем WebSocketMessage правильно - передаем String content вместо Map
+            // Создаем WebSocketMessage со ВСЕМИ данными, включая файлы
             WebSocketMessage wsMessage = new WebSocketMessage();
             wsMessage.setType(MessageType.CHAT_MESSAGE);
             wsMessage.setContent((String) messageData.get("content"));
             wsMessage.setChatId(chatId);
-            wsMessage.setUserId(messageData.containsKey("senderId") ?
-                ((Number) messageData.get("senderId")).longValue() : null);
-            wsMessage.setUsername((String) messageData.get("senderUsername"));
 
-            log.info("[KAFKA] Processing message for chat {} from user {} (ID: {}): '{}'",
-                chatId, wsMessage.getUsername(), wsMessage.getUserId(), wsMessage.getContent());
+            // Устанавливаем данные отправителя
+            if (messageData.containsKey("senderId")) {
+                wsMessage.setUserId(((Number) messageData.get("senderId")).longValue());
+                wsMessage.setSenderId(((Number) messageData.get("senderId")).longValue());
+            }
+            if (messageData.containsKey("senderUsername")) {
+                wsMessage.setUsername((String) messageData.get("senderUsername"));
+                wsMessage.setSenderUsername((String) messageData.get("senderUsername"));
+            }
+
+            // ИСПРАВЛЕНО: Копируем данные о файлах из Kafka
+            if (messageData.containsKey("messageType")) {
+                wsMessage.setMessageType((String) messageData.get("messageType"));
+                log.debug("[KAFKA] Message type: {}", messageData.get("messageType"));
+            }
+            if (messageData.containsKey("fileUrl")) {
+                wsMessage.setFileUrl((String) messageData.get("fileUrl"));
+                log.debug("[KAFKA] File URL: {}", messageData.get("fileUrl"));
+            }
+            if (messageData.containsKey("fileName")) {
+                wsMessage.setFileName((String) messageData.get("fileName"));
+                log.debug("[KAFKA] File name: {}", messageData.get("fileName"));
+            }
+            if (messageData.containsKey("fileSize")) {
+                wsMessage.setFileSize(((Number) messageData.get("fileSize")).longValue());
+                log.debug("[KAFKA] File size: {}", messageData.get("fileSize"));
+            }
+            if (messageData.containsKey("mimeType")) {
+                wsMessage.setMimeType((String) messageData.get("mimeType"));
+                log.debug("[KAFKA] MIME type: {}", messageData.get("mimeType"));
+            }
+            if (messageData.containsKey("thumbnailUrl") && messageData.get("thumbnailUrl") != null) {
+                wsMessage.setThumbnailUrl((String) messageData.get("thumbnailUrl"));
+                log.debug("[KAFKA] Thumbnail URL: {}", messageData.get("thumbnailUrl"));
+            }
+            if (messageData.containsKey("messageId")) {
+                wsMessage.setId(((Number) messageData.get("messageId")).longValue());
+            }
+
+            log.info("[KAFKA] Processing message for chat {} from user {} (ID: {}): '{}' [Type: {}, HasFile: {}]",
+                chatId, wsMessage.getUsername(), wsMessage.getUserId(), wsMessage.getContent(),
+                wsMessage.getMessageType(), wsMessage.getFileUrl() != null);
 
             // Получаем каналы участников чата
             List<Channel> channels = sessionManager.getChatChannels(chatId);
@@ -112,6 +149,8 @@ public class MessageForwardService {
 
             if (!channels.isEmpty()) {
                 String jsonMessage = objectMapper.writeValueAsString(wsMessage);
+                log.debug("[FORWARD] JSON message to send: {}", jsonMessage);
+
                 int successCount = 0;
                 int failureCount = 0;
 

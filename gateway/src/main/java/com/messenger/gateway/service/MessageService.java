@@ -17,16 +17,20 @@ import java.util.Map;
 @Slf4j
 public class MessageService {
 
-    @Value("${message-service.url:http://localhost:8084}")
+    @Value("${message-service.url:http://localhost:8082}")  // ИСПРАВЛЕНО: порт 8082 вместо 8084
     private String messageServiceUrl;
 
     private final WebClient.Builder webClientBuilder;
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     public Flux<Object> getChatMessages(Long chatId, String token) {
+        return getChatMessages(chatId, token, 0, 50); // Используем значения по умолчанию
+    }
+
+    public Flux<Object> getChatMessages(Long chatId, String token, int page, int size) {
         return webClientBuilder.build()
                 .get()
-                .uri(messageServiceUrl + "/api/messages/chat/" + chatId)
+                .uri(messageServiceUrl + "/api/messages/chat/" + chatId + "?page=" + page + "&size=" + size)
                 .header("Authorization", "Bearer " + token)
                 .retrieve()
                 .bodyToFlux(Object.class)

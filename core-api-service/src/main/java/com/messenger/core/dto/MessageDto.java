@@ -20,6 +20,13 @@ public class MessageDto {
     private Long chatId;
     private MessageDto replyToMessage;
 
+    // Поля для файлов
+    private String fileUrl;
+    private String fileName;
+    private Long fileSize;
+    private String mimeType;
+    private String thumbnailUrl;
+
     // DTO для отправки нового сообщения
     @Data
     @NoArgsConstructor
@@ -29,6 +36,13 @@ public class MessageDto {
         private String content;
         private Message.MessageType messageType = Message.MessageType.TEXT;
         private Long replyToMessageId; // ID сообщения, на которое отвечаем
+
+        // Для файловых сообщений
+        private String fileUrl;
+        private String fileName;
+        private Long fileSize;
+        private String mimeType;
+        private String thumbnailUrl;
     }
 
     // DTO для редактирования сообщения

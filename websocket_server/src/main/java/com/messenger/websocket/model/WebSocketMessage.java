@@ -14,23 +14,33 @@ import java.time.LocalDateTime;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WebSocketMessage {
 
+    private Long id;
     private MessageType type;
     private String content;
     private String token;
     private Long chatId;
     private Long userId;
+    private Long senderId;
     private String username;
+    private String senderUsername;
     private LocalDateTime timestamp;
 
+    // Поля для поддержки файлов
+    private String messageType; // Тип сообщения как строка: TEXT, IMAGE, FILE
+    private String fileUrl;
+    private String fileName;
+    private Long fileSize;
+    private String mimeType;
+    private String thumbnailUrl;
+
     // Алиас для совместимости с фронтом, который возможно ожидает поле messageType
-    @JsonProperty("messageType")
-    public MessageType getMessageType() {
+    @JsonProperty("type")
+    public MessageType getTypeEnum() {
         return type;
     }
 
-    @JsonProperty("messageType")
-    public void setMessageType(MessageType mt) {
-        // Если фронт присылает messageType — синхронизируем с основным полем type
+    @JsonProperty("type")
+    public void setTypeEnum(MessageType mt) {
         this.type = mt;
     }
 
