@@ -106,9 +106,86 @@ public class MessageService {
         // Используем оптимизированный запрос с предварительной загрузкой отправителей
         List<Message> messages = messageRepository.findByChatIdOrderByCreatedAtDescWithSender(chatId, pageable);
 
-        return messages.stream()
-            .map(this::convertToDto)
+        // ОПТИМИЗАЦИЯ: Batch-загрузка статусов прочтения для всех сообщений
+        return convertToDtoWithBatchReadStatuses(messages, userId);
+    }
+
+    /**
+     * Конвертировать список сообщений в DTO с batch-загрузкой статусов прочтения
+     */
+    private List<MessageDto> convertToDtoWithBatchReadStatuses(List<Message> messages, Long currentUserId) {
+        if (messages.isEmpty()) {
+            return List.of();
+        }
+
+        // Собираем ID всех сообщений
+        List<Long> messageIds = messages.stream()
+            .map(Message::getId)
             .collect(Collectors.toList());
+
+        // Batch-загрузка всех статусов прочтения одним запросом
+        List<MessageReadStatus> allReadStatuses = messageReadStatusRepository.findByMessageIdIn(messageIds);
+
+        // Группируем статусы по message_id
+        Map<Long, List<MessageReadStatus>> statusesByMessageId = allReadStatuses.stream()
+            .collect(Collectors.groupingBy(mrs -> mrs.getMessage().getId()));
+
+        // Конвертируем сообщения в DTO с предзагруженными статусами
+        return messages.stream()
+            .map(message -> {
+                List<MessageReadStatus> messageStatuses = statusesByMessageId.getOrDefault(message.getId(), List.of());
+                return convertToDtoWithPreloadedStatuses(message, currentUserId, messageStatuses);
+            })
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Конвертировать Message в MessageDto с предзагруженными статусами
+     */
+    private MessageDto convertToDtoWithPreloadedStatuses(Message message, Long currentUserId, List<MessageReadStatus> readStatuses) {
+        MessageDto dto = new MessageDto();
+        dto.setId(message.getId());
+        dto.setContent(message.getContent());
+        dto.setMessageType(message.getMessageType());
+        dto.setIsEdited(message.getIsEdited());
+        dto.setCreatedAt(message.getCreatedAt());
+        dto.setUpdatedAt(message.getUpdatedAt());
+        dto.setChatId(message.getChat().getId());
+
+        // Добавляем поля файлов
+        dto.setFileUrl(message.getFileUrl());
+        dto.setFileName(message.getFileName());
+        dto.setFileSize(message.getFileSize());
+        dto.setMimeType(message.getMimeType());
+        dto.setThumbnailUrl(message.getThumbnailUrl());
+
+        if (message.getSender() != null) {
+            dto.setSender(userService.convertToDto(message.getSender()));
+        }
+
+        if (message.getReplyToMessage() != null) {
+            dto.setReplyToMessage(convertToDto(message.getReplyToMessage()));
+        }
+
+        // Используем предзагруженные статусы прочтения
+        dto.setReadCount(readStatuses.size());
+
+        if (currentUserId != null) {
+            // Проверяем, прочитано ли сообщение текущим пользователем
+            readStatuses.stream()
+                .filter(rs -> rs.getUser().getId().equals(currentUserId))
+                .findFirst()
+                .ifPresent(status -> {
+                    dto.setIsReadByCurrentUser(true);
+                    dto.setReadAt(status.getReadAt());
+                });
+
+            if (dto.getReadAt() == null) {
+                dto.setIsReadByCurrentUser(false);
+            }
+        }
+
+        return dto;
     }
 
     /**

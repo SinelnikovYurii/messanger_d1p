@@ -52,4 +52,41 @@ public class KafkaMessageListener {
             log.error("[KAFKA] Error processing message: {}", e.getMessage(), e);
         }
     }
+
+    /**
+     * Слушатель уведомлений о запросах в друзья и других WebSocket событий
+     */
+    @KafkaListener(topics = "websocket-notifications", groupId = "websocket-service-group")
+    public void handleWebSocketNotification(ConsumerRecord<String, String> record) {
+        try {
+            log.info("[KAFKA-NOTIFICATION] Received notification from Kafka: key={}, value={}",
+                record.key(), record.value());
+
+            Map<String, Object> notificationData = objectMapper.readValue(record.value(), Map.class);
+            String type = (String) notificationData.get("type");
+
+            if (type == null) {
+                log.warn("[KAFKA-NOTIFICATION] Notification type is missing");
+                return;
+            }
+
+            // Получаем ID получателя уведомления
+            Long recipientId = null;
+            if (notificationData.containsKey("recipientId")) {
+                recipientId = ((Number) notificationData.get("recipientId")).longValue();
+            }
+
+            if (recipientId != null) {
+                log.info("[KAFKA-NOTIFICATION] Sending notification type '{}' to user {}", type, recipientId);
+                sessionManager.sendNotificationToUser(recipientId, notificationData);
+                log.info("[KAFKA-NOTIFICATION] Notification sent successfully");
+            } else {
+                log.warn("[KAFKA-NOTIFICATION] Could not determine recipientId for notification: {}",
+                    record.value());
+            }
+
+        } catch (Exception e) {
+            log.error("[KAFKA-NOTIFICATION] Error processing notification: {}", e.getMessage(), e);
+        }
+    }
 }

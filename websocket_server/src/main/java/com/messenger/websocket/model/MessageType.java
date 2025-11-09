@@ -14,5 +14,9 @@ public enum MessageType {
     SYSTEM_MESSAGE,
     PING,
     PONG,
-    ERROR
+    ERROR,
+    // Новые типы для запросов в друзья
+    FRIEND_REQUEST_RECEIVED,  // Получен новый запрос в друзья
+    FRIEND_REQUEST_ACCEPTED,  // Запрос в друзья принят
+    FRIEND_REQUEST_REJECTED   // Запрос в друзья отклонен
 }

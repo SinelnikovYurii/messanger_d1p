@@ -75,5 +75,16 @@ public interface MessageReadStatusRepository extends JpaRepository<MessageReadSt
            "WHERE mrs.message.chat.id = :chatId " +
            "AND mrs.message.id IN :messageIds")
     List<MessageReadStatus> findByChatIdAndMessageIdIn(@Param("chatId") Long chatId, @Param("messageIds") List<Long> messageIds);
-}
 
+    /**
+     * Возвращает Map<chatId, unreadCount>
+     */
+    @Query("SELECT m.chat.id as chatId, COUNT(m) as unreadCount " +
+           "FROM Message m " +
+           "WHERE m.chat.id IN :chatIds " +
+           "AND m.sender.id != :userId " +
+           "AND m.isDeleted = false " +
+           "AND NOT EXISTS (SELECT 1 FROM MessageReadStatus mrs WHERE mrs.message.id = m.id AND mrs.user.id = :userId) " +
+           "GROUP BY m.chat.id")
+    List<Object[]> countUnreadMessagesForChats(@Param("chatIds") List<Long> chatIds, @Param("userId") Long userId);
+}

@@ -1,0 +1,41 @@
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.Reader;
+import java.util.*;
+import java.util.concurrent.*;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        String s = scanner.nextLine().trim();
+
+        char[] digits = s.toCharArray();
+        Arrays.sort(digits);
+        
+        int firstNonZero = -1;
+        for (int i = 0; i < digits.length; i++) {
+            if (digits[i] != '0') {
+                firstNonZero = i;
+                break;
+            }
+        }
+        
+        char firstDigit = digits[firstNonZero];
+        
+        StringBuilder sb = new StringBuilder();
+        sb.append(firstDigit);
+        
+        for (int i = 0; i < digits.length; i++) {
+            if (i == firstNonZero) continue;
+            sb.append(digits[i]);
+        }
+
+        System.out.println(sb.toString());
+    }
+
+        
+    
+}
+
+

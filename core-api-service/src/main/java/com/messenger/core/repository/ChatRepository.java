@@ -13,9 +13,9 @@ import java.util.Optional;
 public interface ChatRepository extends JpaRepository<Chat, Long> {
 
     // Найти все чаты пользователя с оптимизированной загрузкой
-    @Query("SELECT DISTINCT c FROM Chat c " +
-           "LEFT JOIN FETCH c.participants p " +
-           "LEFT JOIN FETCH c.createdBy " +
+    // Используем двухэтапную загрузку, чтобы избежать проблемы с DISTINCT и коллекциями
+    @Query("SELECT c FROM Chat c " +
+           "JOIN c.participants p " +
            "WHERE p.id = :userId " +
            "ORDER BY c.lastMessageAt DESC")
     List<Chat> findChatsByUserIdWithParticipants(@Param("userId") Long userId);

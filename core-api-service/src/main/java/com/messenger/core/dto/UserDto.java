@@ -17,6 +17,7 @@ public class UserDto {
     private String firstName;
     private String lastName;
     private String profilePictureUrl;
+    private String bio;
     private Boolean isOnline;
     private LocalDateTime lastSeen;
     private Friendship.FriendshipStatus friendshipStatus; // Статус дружбы с текущим пользователем
@@ -58,8 +59,11 @@ public class UserDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class UpdateProfileRequest {
+        private String username;
+        private String email;
         private String firstName;
         private String lastName;
         private String profilePictureUrl;
+        private String bio;
     }
 }

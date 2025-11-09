@@ -4,8 +4,10 @@ import com.messenger.core.dto.ChatDto;
 import com.messenger.core.dto.MessageDto;
 import com.messenger.core.model.Chat;
 import com.messenger.core.model.Message;
+import com.messenger.core.model.User;
 import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.MessageRepository;
+import com.messenger.core.repository.MessageReadStatusRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -25,6 +27,7 @@ public class OptimizedDataService {
 
     private final ChatRepository chatRepository;
     private final MessageRepository messageRepository;
+    private final MessageReadStatusRepository messageReadStatusRepository;
     private final UserService userService;
     private final MessageService messageService;
 
@@ -33,11 +36,11 @@ public class OptimizedDataService {
      */
     @Transactional(readOnly = true)
     public List<ChatDto> getOptimizedUserChats(Long userId) {
-        log.debug("Getting optimized user chats for user {}", userId);
+        log.info("=== НАЧАЛО getOptimizedUserChats для пользователя {} ===", userId);
 
-        // 1. Получаем чаты с предварительно загруженными участниками и создателями
+        // 1. Получаем чаты пользователя
         List<Chat> chats = chatRepository.findChatsByUserIdWithParticipants(userId);
-        log.debug("Found {} chats for user {}", chats.size(), userId);
+        log.info("Загружено {} чатов для пользователя {}", chats.size(), userId);
 
         if (chats.isEmpty()) {
             return List.of();
@@ -48,9 +51,17 @@ public class OptimizedDataService {
             .map(Chat::getId)
             .collect(Collectors.toList());
 
+        // ИСПРАВЛЕНО: Batch-загружаем всех участников для всех чатов одним запросом
+        List<Chat> chatsWithParticipants = chatRepository.findChatsByIdsWithParticipants(chatIds);
+        log.info("Загружены участники для {} чатов", chatsWithParticipants.size());
+
+        // Создаем карту для быстрого доступа к чатам с участниками
+        Map<Long, Chat> chatMap = chatsWithParticipants.stream()
+            .collect(Collectors.toMap(Chat::getId, chat -> chat));
+
         // 3. Batch загружаем последние сообщения для всех чатов одним запросом
         List<Message> lastMessages = messageRepository.findLastMessagesByChatIds(chatIds);
-        log.debug("Found {} last messages for {} chats", lastMessages.size(), chatIds.size());
+        log.info("Загружены последние сообщения для {} чатов", lastMessages.size());
 
         // 4. Создаем карту для быстрого доступа к последним сообщениям
         Map<Long, Message> lastMessageMap = lastMessages.stream()
@@ -60,10 +71,27 @@ public class OptimizedDataService {
                 (existing, replacement) -> existing // В случае дубликатов оставляем существующий
             ));
 
-        // 5. Конвертируем в DTO с минимальным количеством дополнительных запросов
-        return chats.stream()
-            .map(chat -> convertChatToDtoOptimized(chat, lastMessageMap.get(chat.getId())))
+        // 5. ИСПРАВЛЕНО: Batch-загрузка счетчиков непрочитанных сообщений одним запросом
+        Map<Long, Integer> unreadCounts = getUnreadCountsForChats(chatIds, userId);
+        log.info("Загружены счетчики непрочитанных для {} чатов", unreadCounts.size());
+
+        // 6. Конвертируем в DTO с минимальным количеством дополнительных запросов
+        // ИСПРАВЛЕНО: Используем чаты с загруженными участниками из chatMap
+        List<ChatDto> result = chatsWithParticipants.stream()
+            .map(chat -> convertChatToDtoOptimized(chat, lastMessageMap.get(chat.getId()), userId, unreadCounts.get(chat.getId())))
             .collect(Collectors.toList());
+
+        log.info("=== ЗАВЕРШЕНО getOptimizedUserChats: возвращено {} DTO ===", result.size());
+
+        // Логируем детали первого чата для отладки
+        if (!result.isEmpty()) {
+            ChatDto firstChat = result.get(0);
+            log.info("Пример первого чата: ID={}, Name={}, Type={}, AvatarUrl={}, UnreadCount={}",
+                firstChat.getId(), firstChat.getChatName(), firstChat.getChatType(),
+                firstChat.getChatAvatarUrl(), firstChat.getUnreadCount());
+        }
+
+        return result;
     }
 
     /**
@@ -91,15 +119,80 @@ public class OptimizedDataService {
     }
 
     /**
-     * Оптимизированная конвертация Chat в ChatDto
+     * ИСПРАВЛЕНО: Получить счетчики непрочитанных сообщений для списка чатов (оптимизированный запрос)
      */
-    private ChatDto convertChatToDtoOptimized(Chat chat, Message lastMessage) {
+    private Map<Long, Integer> getUnreadCountsForChats(List<Long> chatIds, Long userId) {
+        log.info("Запрашиваем счетчики непрочитанных для {} чатов: {}", chatIds.size(), chatIds);
+
+        // Получаем счетчики непрочитанных сообщений для чатов одним запросом
+        List<Object[]> results = messageReadStatusRepository.countUnreadMessagesForChats(chatIds, userId);
+
+        log.info("Получено {} результатов от batch-запроса", results.size());
+
+        Map<Long, Integer> unreadCountsMap = new HashMap<>();
+        for (Object[] result : results) {
+            Long chatId = ((Number) result[0]).longValue();
+            Long unreadCount = ((Number) result[1]).longValue();
+
+            unreadCountsMap.put(chatId, unreadCount.intValue());
+            log.debug("Чат {}: {} непрочитанных сообщений", chatId, unreadCount);
+        }
+
+        // Заполняем нулями для чатов без непрочитанных сообщений
+        for (Long chatId : chatIds) {
+            unreadCountsMap.putIfAbsent(chatId, 0);
+        }
+
+        log.info("Итого счетчиков в Map: {}", unreadCountsMap.size());
+
+        return unreadCountsMap;
+    }
+
+    /**
+     * ИСПРАВЛЕНО: Оптимизированная конвертация Chat в ChatDto
+     */
+    private ChatDto convertChatToDtoOptimized(Chat chat, Message lastMessage, Long userId, Integer unreadCount) {
         ChatDto dto = new ChatDto();
         dto.setId(chat.getId());
         dto.setChatName(chat.getChatName());
         dto.setChatType(chat.getChatType());
         dto.setChatDescription(chat.getChatDescription());
-        dto.setChatAvatarUrl(chat.getChatAvatarUrl());
+
+        log.info("Конвертируем чат ID={}, Type={}, Participants={}",
+            chat.getId(), chat.getChatType(), chat.getParticipants() != null ? chat.getParticipants().size() : 0);
+
+        // ИСПРАВЛЕНО: Для личных чатов используем аватарку собеседника
+        if (chat.getChatType() == Chat.ChatType.PRIVATE && chat.getParticipants() != null && userId != null) {
+            log.info("Чат {} - ПРИВАТНЫЙ, ищем собеседника для userId={}", chat.getId(), userId);
+
+            // Находим собеседника (не текущего пользователя)
+            User otherParticipant = chat.getParticipants().stream()
+                .filter(participant -> !participant.getId().equals(userId))
+                .findFirst()
+                .orElse(null);
+
+            if (otherParticipant != null) {
+                log.info("Найден собеседник: ID={}, Username={}, ProfilePictureUrl={}",
+                    otherParticipant.getId(), otherParticipant.getUsername(), otherParticipant.getProfilePictureUrl());
+
+                if (otherParticipant.getProfilePictureUrl() != null) {
+                    // Устанавливаем аватарку собеседника
+                    dto.setChatAvatarUrl(otherParticipant.getProfilePictureUrl());
+                    log.info("✅ Установлена аватарка собеседника для чата {}: {}", chat.getId(), otherParticipant.getProfilePictureUrl());
+                } else {
+                    dto.setChatAvatarUrl(chat.getChatAvatarUrl());
+                    log.info("⚠️ У собеседника нет аватарки, используем аватарку чата: {}", chat.getChatAvatarUrl());
+                }
+            } else {
+                dto.setChatAvatarUrl(chat.getChatAvatarUrl());
+                log.warn("❌ Не найден собеседник для приватного чата {}", chat.getId());
+            }
+        } else {
+            // Для групповых чатов используем аватарку группы
+            dto.setChatAvatarUrl(chat.getChatAvatarUrl());
+            log.info("Установлена аватарка группы для чата {}: {}", chat.getId(), chat.getChatAvatarUrl());
+        }
+
         dto.setCreatedAt(chat.getCreatedAt());
         dto.setLastMessageAt(chat.getLastMessageAt());
 
@@ -119,6 +212,9 @@ public class OptimizedDataService {
         if (lastMessage != null) {
             dto.setLastMessage(messageService.convertToDto(lastMessage));
         }
+
+        // ИСПРАВЛЕНО: Устанавливаем количество непрочитанных сообщений
+        dto.setUnreadCount(unreadCount != null ? unreadCount : 0);
 
         return dto;
     }

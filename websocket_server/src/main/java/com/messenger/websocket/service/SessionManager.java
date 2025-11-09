@@ -24,6 +24,12 @@ public class SessionManager {
     @Autowired
     private ChatParticipantService chatParticipantService;
 
+    @Autowired
+    private OnlineStatusService onlineStatusService;
+
+    @Autowired
+    private UserDataService userDataService;
+
     public void addSession(String sessionId, ChannelHandlerContext ctx, String username, Long userId) {
         // Удаляем предыдущую сессию пользователя, если она существует
         String existingSessionId = userIdToSessionId.get(userId);
@@ -36,6 +42,12 @@ public class SessionManager {
         sessions.put(sessionId, session);
         userIdToSessionId.put(userId, sessionId);
 
+        // Обновляем онлайн-статус в базе данных
+        onlineStatusService.setUserOnline(userId);
+
+        // Отправляем уведомление всем о том, что пользователь онлайн
+        broadcastUserOnlineStatus(userId, username, true);
+
         log.info("[SESSION] User session added: {} (userId: {}, sessionId: {})", username, userId, sessionId);
         log.info("[SESSION] Total active sessions: {}", sessions.size());
     }
@@ -44,11 +56,80 @@ public class SessionManager {
         UserSession session = sessions.remove(sessionId);
         if (session != null) {
             userIdToSessionId.remove(session.getUserId());
+
+            // Обновляем онлайн-статус в базе данных
+            onlineStatusService.setUserOffline(session.getUserId());
+
+            // Отправляем уведомление всем о том, что пользователь оффлайн
+            broadcastUserOnlineStatus(session.getUserId(), session.getUsername(), false);
+
             log.info("[SESSION] User session removed: {} (userId: {}, sessionId: {})",
                     session.getUsername(), session.getUserId(), sessionId);
             log.info("[SESSION] Total active sessions: {}", sessions.size());
         } else {
             log.warn("[SESSION] Attempted to remove non-existent session: {}", sessionId);
+        }
+    }
+
+    /**
+     * Отправить уведомление об изменении онлайн-статуса пользователя всем подключенным
+     */
+    private void broadcastUserOnlineStatus(Long userId, String username, boolean isOnline) {
+        try {
+            websocket.model.WebSocketMessage statusMessage = new websocket.model.WebSocketMessage();
+            statusMessage.setType(isOnline ? MessageType.USER_ONLINE : MessageType.USER_OFFLINE);
+            statusMessage.setUserId(userId);
+            statusMessage.setUsername(username);
+            statusMessage.setTimestamp(LocalDateTime.now());
+            statusMessage.setIsOnline(isOnline);
+
+            // ИСПРАВЛЕНИЕ: Получаем актуальные данные пользователя из базы данных
+            if (!isOnline) {
+                // Пользователь вышел из сети - получаем актуальное время lastSeen
+                try {
+                    UserDataService.UserData userData = userDataService.getUserData(userId);
+                    if (userData != null && userData.getLastSeen() != null) {
+                        statusMessage.setLastSeen(userData.getLastSeen());
+                        log.info("[ONLINE-STATUS] Retrieved lastSeen from database: {}", userData.getLastSeen());
+                    } else {
+                        // Если не удалось получить из базы, используем текущее время
+                        statusMessage.setLastSeen(LocalDateTime.now());
+                        log.warn("[ONLINE-STATUS] Could not retrieve lastSeen from database, using current time");
+                    }
+                } catch (Exception e) {
+                    log.error("[ONLINE-STATUS] Error retrieving user data: {}", e.getMessage());
+                    statusMessage.setLastSeen(LocalDateTime.now());
+                }
+            } else {
+                // Пользователь онлайн - lastSeen должен быть null
+                statusMessage.setLastSeen(null);
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+            mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+            String json = mapper.writeValueAsString(statusMessage);
+
+            log.info("[ONLINE-STATUS] Broadcasting {} status for user {} (ID: {}), lastSeen={}",
+                isOnline ? "ONLINE" : "OFFLINE", username, userId, statusMessage.getLastSeen());
+
+            // Отправляем всем подключенным пользователям
+            int sentCount = 0;
+            for (UserSession session : sessions.values()) {
+                try {
+                    if (session.getContext().channel().isActive()) {
+                        session.getContext().channel().writeAndFlush(
+                            new io.netty.handler.codec.http.websocketx.TextWebSocketFrame(json)
+                        );
+                        sentCount++;
+                    }
+                } catch (Exception e) {
+                    log.error("[ONLINE-STATUS] Failed to send status to session: {}", session.getSessionId(), e);
+                }
+            }
+
+            log.info("[ONLINE-STATUS] Sent status update to {} active sessions", sentCount);
+        } catch (Exception e) {
+            log.error("[ONLINE-STATUS] Error broadcasting user status: {}", e.getMessage(), e);
         }
     }
 
@@ -338,25 +419,60 @@ public class SessionManager {
                     try {
                         if (channel.isActive()) {
                             channel.writeAndFlush(new io.netty.handler.codec.http.websocketx.TextWebSocketFrame(json));
-                            log.debug("✅ [BROADCAST] Sent message to channel: {}", channel.id().asShortText());
+                            log.debug("[BROADCAST] Sent message to channel: {}", channel.id().asShortText());
                             successCount++;
                         } else {
-                            log.debug("⚠️ [BROADCAST] Skipped inactive channel: {}", channel.id().asShortText());
+                            log.debug("⚠[BROADCAST] Skipped inactive channel: {}", channel.id().asShortText());
                         }
                     } catch (Exception e) {
-                        log.error("❌ [BROADCAST] Failed to send message to channel: {}", channel.id().asShortText(), e);
+                        log.error("[BROADCAST] Failed to send message to channel: {}", channel.id().asShortText(), e);
                         failCount++;
                     }
                 }
 
-                log.info("✅ [BROADCAST] Broadcast completed for chat {}: {} successful, {} failed",
+                log.info("[BROADCAST] Broadcast completed for chat {}: {} successful, {} failed",
                         chatId, successCount, failCount);
             } else {
-                log.warn("⚠️ [BROADCAST] No active channels found for chat {}", chatId);
+                log.warn("⚠[BROADCAST] No active channels found for chat {}", chatId);
             }
 
         } catch (Exception e) {
-            log.error("❌ [BROADCAST] Error during broadcast for chat {}: {}", chatId, e.getMessage(), e);
+            log.error("[BROADCAST] Error during broadcast for chat {}: {}", chatId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Отправить уведомление конкретному пользователю
+     * Используется для уведомлений о запросах в друзья и других событий
+     */
+    public void sendNotificationToUser(Long userId, Map<String, Object> notificationData) {
+        try {
+            log.info("[NOTIFICATION] Sending notification to user {}: {}", userId, notificationData);
+
+            String sessionId = userIdToSessionId.get(userId);
+            if (sessionId == null) {
+                log.warn("[NOTIFICATION] User {} is not online, notification will not be delivered", userId);
+                return;
+            }
+
+            UserSession session = sessions.get(sessionId);
+            if (session == null || !session.getContext().channel().isActive()) {
+                log.warn("[NOTIFICATION] User {} session is inactive", userId);
+                return;
+            }
+
+            // Конвертируем данные в JSON и отправляем
+            ObjectMapper mapper = new ObjectMapper();
+            mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+            String json = mapper.writeValueAsString(notificationData);
+
+            session.getContext().channel().writeAndFlush(
+                new TextWebSocketFrame(json)
+            );
+
+            log.info("[NOTIFICATION] Successfully sent notification to user {}", userId);
+        } catch (Exception e) {
+            log.error("[NOTIFICATION] Error sending notification to user {}: {}", userId, e.getMessage(), e);
         }
     }
 

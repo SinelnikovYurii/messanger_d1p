@@ -1,7 +1,6 @@
 package com.messenger.core.controller;
 
 import com.messenger.core.dto.UserDto;
-import com.messenger.core.model.User;
 import com.messenger.core.service.FriendshipService;
 import com.messenger.core.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -12,7 +11,6 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
-import java.util.Optional;
 import java.util.Map;
 
 @RestController
@@ -89,7 +87,15 @@ public class UserController {
 
         try {
             Long currentUserId = Long.parseLong(userIdHeader);
-            return ResponseEntity.ok(userService.searchUsers(query, currentUserId));
+            List<UserDto.UserSearchResult> results = userService.searchUsers(query, currentUserId);
+
+            log.info("Найдено пользователей: {}", results.size());
+            results.forEach(user ->
+                log.info("User search result: id={}, username={}, profilePictureUrl={}",
+                    user.getId(), user.getUsername(), user.getProfilePictureUrl())
+            );
+
+            return ResponseEntity.ok(results);
         } catch (NumberFormatException e) {
             log.error("Некорректный формат ID пользователя: {}", userIdHeader);
             return ResponseEntity.badRequest().build();
@@ -226,5 +232,147 @@ public class UserController {
         }
     }
 
-    // ...другие методы контроллера...
+    // Обновить профиль пользователя
+    @PutMapping("/profile")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<?> updateProfile(
+            @RequestBody UserDto.UpdateProfileRequest request,
+            HttpServletRequest httpRequest) {
+        log.info("Получен запрос на обновление профиля: {}", request);
+
+        String userIdHeader = httpRequest.getHeader("x-user-id");
+        if (userIdHeader == null) {
+            log.error("Не указан ID пользователя в заголовке запроса");
+            return ResponseEntity.badRequest().body(Map.of("error", "Не указан ID пользователя"));
+        }
+
+        try {
+            Long currentUserId = Long.parseLong(userIdHeader);
+            log.info("Обновление профиля для пользователя с ID: {}", currentUserId);
+
+            UserDto updatedUser = userService.updateProfile(currentUserId, request);
+            return ResponseEntity.ok(updatedUser);
+        } catch (NumberFormatException e) {
+            log.error("Некорректный формат ID пользователя: {}", userIdHeader);
+            return ResponseEntity.badRequest().body(Map.of("error", "Некорректный формат ID"));
+        } catch (RuntimeException e) {
+            log.error("Ошибка при обновлении профиля: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Получить информацию о текущем пользователе
+    @GetMapping("/profile")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<?> getCurrentUserProfile(HttpServletRequest httpRequest) {
+        log.info("Получен запрос на получение информации о текущем пользователе");
+
+        String userIdHeader = httpRequest.getHeader("x-user-id");
+        if (userIdHeader == null) {
+            log.error("Не указан ID пользователя в заголовке запроса");
+            return ResponseEntity.badRequest().body(Map.of("error", "Не указан ID пользователя"));
+        }
+
+        try {
+            Long currentUserId = Long.parseLong(userIdHeader);
+            UserDto userInfo = userService.getUserInfo(currentUserId, currentUserId);
+            return ResponseEntity.ok(userInfo);
+        } catch (NumberFormatException e) {
+            log.error("Некорректный формат ID пользователя: {}", userIdHeader);
+            return ResponseEntity.badRequest().body(Map.of("error", "Некорректный формат ID"));
+        } catch (RuntimeException e) {
+            log.error("Ошибка при получении информации о пользователе: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Загрузить аватар профиля
+    @PostMapping("/profile/avatar")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<?> uploadAvatar(
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            HttpServletRequest httpRequest) {
+        log.info("Получен запрос на загрузку аватара профиля");
+
+        String userIdHeader = httpRequest.getHeader("x-user-id");
+        if (userIdHeader == null) {
+            log.error("Не указан ID пользователя в заголовке запроса");
+            return ResponseEntity.badRequest().body(Map.of("error", "Не указан ID пользователя"));
+        }
+
+        try {
+            Long currentUserId = Long.parseLong(userIdHeader);
+
+            // Проверяем, что это изображение
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Файл должен быть изображением"));
+            }
+
+            // УВЕЛИЧЕНО: Проверяем размер файла (максимум 10 МБ)
+            if (file.getSize() > 10 * 1024 * 1024) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Размер файла не должен превышать 10 МБ"));
+            }
+
+            log.info("Загрузка аватара для пользователя с ID: {}, размер: {} байт", currentUserId, file.getSize());
+
+            String avatarUrl = userService.uploadAvatar(currentUserId, file);
+            return ResponseEntity.ok(Map.of("avatarUrl", avatarUrl));
+        } catch (NumberFormatException e) {
+            log.error("Некорректный формат ID пользователя: {}", userIdHeader);
+            return ResponseEntity.badRequest().body(Map.of("error", "Некорректный формат ID"));
+        } catch (Exception e) {
+            log.error("Ошибка при загрузке аватара: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Обновить онлайн-статус пользователя (вызывается WebSocket сервером)
+    @PostMapping("/{userId}/status/online")
+    public ResponseEntity<?> updateOnlineStatus(
+            @PathVariable Long userId,
+            @RequestParam boolean isOnline,
+            HttpServletRequest httpRequest) {
+
+        // Проверяем, что запрос от внутреннего сервиса
+        String internalServiceHeader = httpRequest.getHeader("X-Internal-Service");
+        if (!"websocket-server".equals(internalServiceHeader)) {
+            log.warn("Попытка обновления онлайн-статуса не от WebSocket сервера");
+            return ResponseEntity.status(403).body(Map.of("error", "Forbidden"));
+        }
+
+        log.info("Обновление онлайн-статуса для пользователя {}: {}", userId, isOnline);
+
+        try {
+            userService.updateOnlineStatus(userId, isOnline);
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (Exception e) {
+            log.error("Ошибка при обновлении онлайн-статуса: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Получить данные пользователя по ID (для внутренних сервисов)
+    @GetMapping("/{userId}/internal")
+    public ResponseEntity<?> getUserDataInternal(
+            @PathVariable Long userId,
+            HttpServletRequest httpRequest) {
+
+        // Проверяем, что запрос от внутреннего сервиса
+        String internalServiceHeader = httpRequest.getHeader("X-Internal-Service");
+        if (!"websocket-server".equals(internalServiceHeader)) {
+            log.warn("Попытка получения данных пользователя не от внутреннего сервиса");
+            return ResponseEntity.status(403).body(Map.of("error", "Forbidden"));
+        }
+
+        log.info("Получение данных пользователя {} для внутреннего сервиса", userId);
+
+        try {
+            UserDto user = userService.getUserInfo(userId, userId); // Используем userId для обоих параметров
+            return ResponseEntity.ok(user);
+        } catch (Exception e) {
+            log.error("Ошибка при получении данных пользователя: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }

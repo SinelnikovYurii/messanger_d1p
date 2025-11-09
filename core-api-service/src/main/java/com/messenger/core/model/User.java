@@ -40,6 +40,9 @@ public class User {
     @Column(name = "profile_picture_url")
     private String profilePictureUrl;
 
+    @Column(columnDefinition = "TEXT")
+    private String bio;
+
     @Column(name = "is_online")
     private Boolean isOnline = false;
 

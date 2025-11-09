@@ -8,6 +8,7 @@ import com.messenger.core.model.User;
 import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.MessageRepository;
 import com.messenger.core.repository.UserRepository;
+import com.messenger.core.repository.MessageReadStatusRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -30,6 +31,7 @@ public class ChatService {
     private final UserService userService;
     private final MessageService messageService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final MessageReadStatusRepository messageReadStatusRepository;
 
     /**
      * Получить все чаты пользователя
@@ -41,6 +43,8 @@ public class ChatService {
                 throw new IllegalArgumentException("ID пользователя не может быть пустым");
             }
 
+            log.info("=== НАЧАЛО getUserChats для пользователя {} ===", userId);
+
             // Проверяем существование пользователя
             if (!userRepository.existsById(userId)) {
                 throw new IllegalArgumentException("Пользователь с ID " + userId + " не найден");
@@ -48,19 +52,39 @@ public class ChatService {
 
             // Используем оптимизированный запрос с JOIN FETCH
             List<Chat> chats = chatRepository.findChatsByUserIdWithParticipants(userId);
+            log.info("Загружено {} чатов для пользователя {}", chats.size(), userId);
+
+            if (chats.isEmpty()) {
+                return List.of();
+            }
 
             // Предварительно загружаем последние сообщения для всех чатов одним запросом
             Map<Long, Message> lastMessages = getLastMessagesForChats(chats);
+            log.info("Загружены последние сообщения для {} чатов", lastMessages.size());
 
-            return chats.stream()
-                .map(chat -> convertToDtoOptimized(chat, lastMessages.get(chat.getId())))
+            // ИСПРАВЛЕНО: Batch-загрузка счетчиков непрочитанных сообщений одним запросом
+            Map<Long, Integer> unreadCounts = getUnreadCountsForChats(chats, userId);
+            log.info("Загружены счетчики непрочитанных для {} чатов", unreadCounts.size());
+
+            List<ChatDto> result = chats.stream()
+                .map(chat -> convertToDtoOptimized(chat, lastMessages.get(chat.getId()), userId, unreadCounts.get(chat.getId())))
                 .collect(Collectors.toList());
+
+            log.info("=== ЗАВЕРШЕНО getUserChats: возвращено {} DTO ===", result.size());
+
+            // Логируем детали первого чата для отладки
+            if (!result.isEmpty()) {
+                ChatDto firstChat = result.get(0);
+                log.info("Пример первого чата: ID={}, Name={}, Type={}, AvatarUrl={}, UnreadCount={}",
+                    firstChat.getId(), firstChat.getChatName(), firstChat.getChatType(),
+                    firstChat.getChatAvatarUrl(), firstChat.getUnreadCount());
+            }
+
+            return result;
         } catch (Exception e) {
             // Логирование ошибки с подробной информацией
-            String errorMessage = "Ошибка при получении чатов пользователя: " + e.getMessage();
-            System.err.println(errorMessage);
-            e.printStackTrace();
-            throw new RuntimeException(errorMessage, e);
+            log.error("Ошибка при получении чатов пользователя {}: {}", userId, e.getMessage(), e);
+            throw new RuntimeException("Ошибка при получении чатов пользователя: " + e.getMessage(), e);
         }
     }
 
@@ -466,13 +490,35 @@ public class ChatService {
     /**
      * Конвертировать Chat в ChatDto (оптимизированный вариант)
      */
-    private ChatDto convertToDtoOptimized(Chat chat, Message lastMessage) {
+    private ChatDto convertToDtoOptimized(Chat chat, Message lastMessage, Long userId, Integer unreadCount) {
         ChatDto dto = new ChatDto();
         dto.setId(chat.getId());
         dto.setChatName(chat.getChatName());
         dto.setChatType(chat.getChatType());
         dto.setChatDescription(chat.getChatDescription());
-        dto.setChatAvatarUrl(chat.getChatAvatarUrl());
+
+        // ИСПРАВЛЕНО: Для личных чатов используем аватарку собеседника
+        if (chat.getChatType() == Chat.ChatType.PRIVATE && chat.getParticipants() != null && userId != null) {
+            // Находим собеседника (не текущего пользователя)
+            User otherParticipant = chat.getParticipants().stream()
+                .filter(participant -> !participant.getId().equals(userId))
+                .findFirst()
+                .orElse(null);
+
+            if (otherParticipant != null && otherParticipant.getProfilePictureUrl() != null) {
+                // Устанавливаем аватарку собеседника
+                dto.setChatAvatarUrl(otherParticipant.getProfilePictureUrl());
+                log.debug("Установлена аватарка собеседника для чата {}: {}", chat.getId(), otherParticipant.getProfilePictureUrl());
+            } else {
+                dto.setChatAvatarUrl(chat.getChatAvatarUrl());
+                log.debug("Используется аватарка чата по умолчанию для чата {}: {}", chat.getId(), chat.getChatAvatarUrl());
+            }
+        } else {
+            // Для групповых чатов используем аватарку группы
+            dto.setChatAvatarUrl(chat.getChatAvatarUrl());
+            log.debug("Установлена аватарка группы для чата {}: {}", chat.getId(), chat.getChatAvatarUrl());
+        }
+
         dto.setCreatedAt(chat.getCreatedAt());
         dto.setLastMessageAt(chat.getLastMessageAt());
 
@@ -493,6 +539,9 @@ public class ChatService {
             dto.setLastMessage(messageService.convertToDto(lastMessage));
         }
 
+        // ИСПРАВЛЕНО: Подсчитываем непрочитанные сообщения для текущего пользователя с улучшенной обработкой ошибок
+        dto.setUnreadCount(unreadCount != null ? unreadCount : 0);
+
         return dto;
     }
 
@@ -507,13 +556,47 @@ public class ChatService {
         // Получаем последние сообщения для чатов одним запросом
         List<Message> messages = messageRepository.findLastMessagesByChatIds(chatIds);
 
-        // Сохраняем в мапу для быстрого доступа
+
         Map<Long, Message> lastMessagesMap = new HashMap<>();
         for (Message message : messages) {
             lastMessagesMap.put(message.getChat().getId(), message);
         }
 
         return lastMessagesMap;
+    }
+
+    /**
+     * ИСПРАВЛЕНО: Получить счетчики непрочитанных сообщений для списка чатов (оптимизированный запрос)
+     */
+    private Map<Long, Integer> getUnreadCountsForChats(List<Chat> chats, Long userId) {
+        List<Long> chatIds = chats.stream()
+            .map(Chat::getId)
+            .collect(Collectors.toList());
+
+        log.info("Запрашиваем счетчики непрочитанных для {} чатов: {}", chatIds.size(), chatIds);
+
+        // Получаем счетчики непрочитанных сообщений для чатов одним запросом
+        List<Object[]> results = messageReadStatusRepository.countUnreadMessagesForChats(chatIds, userId);
+
+        log.info("Получено {} результатов от batch-запроса", results.size());
+
+        Map<Long, Integer> unreadCountsMap = new HashMap<>();
+        for (Object[] result : results) {
+            Long chatId = ((Number) result[0]).longValue();
+            Long unreadCount = ((Number) result[1]).longValue();
+
+            unreadCountsMap.put(chatId, unreadCount.intValue());
+            log.debug("Чат {}: {} непрочитанных сообщений", chatId, unreadCount);
+        }
+
+        // Заполняем нулями для чатов без непрочитанных сообщений
+        for (Chat chat : chats) {
+            unreadCountsMap.putIfAbsent(chat.getId(), 0);
+        }
+
+        log.info("Итого счетчиков в Map: {}", unreadCountsMap.size());
+
+        return unreadCountsMap;
     }
 
     /**
@@ -527,9 +610,8 @@ public class ChatService {
 
         // Отправляем уведомление каждому участнику чата
         chat.getParticipants().forEach(user -> {
-            // Тема для Kafka - персональные уведомления для конкретного пользователя
-            String topic = "user-notifications." + user.getId();
-            kafkaTemplate.send(topic, notification);
+
+            kafkaTemplate.send("user-notifications", user.getId().toString(), notification);
         });
     }
 
@@ -542,8 +624,7 @@ public class ChatService {
         notification.put("chatId", chatId);
         notification.put("timestamp", System.currentTimeMillis());
 
-        // Персональное уведомление для пользователя
-        String topic = "user-notifications." + userId;
-        kafkaTemplate.send(topic, notification);
+
+        kafkaTemplate.send("user-notifications", userId.toString(), notification);
     }
 }

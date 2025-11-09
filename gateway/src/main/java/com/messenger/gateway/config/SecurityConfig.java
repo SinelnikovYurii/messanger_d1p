@@ -26,6 +26,9 @@ public class SecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers("/auth/**", "/public/**", "/actuator/**").permitAll()
                         .pathMatchers("/ws/**").permitAll() // WebSocket соединения
+                        // ИСПРАВЛЕНИЕ: Публичный доступ к аватаркам без JWT
+                        .pathMatchers("/avatars/**").permitAll()
+                        .pathMatchers("/uploads/avatars/**").permitAll()
                         // Разрешаем OPTIONS запросы (CORS preflight) без аутентификации
                         .pathMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         // API запросы требуют аутентификации

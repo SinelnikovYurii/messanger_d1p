@@ -38,6 +38,10 @@ public class WebSocketMessage {
     private Long readerId; // ID пользователя, который прочитал
     private String readerUsername; // Имя пользователя, который прочитал
 
+    // Поле для онлайн-статуса
+    private LocalDateTime lastSeen; // Время последнего визита (для USER_OFFLINE)
+    private Boolean isOnline; // Статус онлайн (для USER_ONLINE/USER_OFFLINE)
+
     // Алиас для совместимости с фронтом, который возможно ожидает поле messageType
     @JsonProperty("type")
     public MessageType getTypeEnum() {

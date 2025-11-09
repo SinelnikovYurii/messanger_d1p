@@ -3,6 +3,7 @@ package websocket.service;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
@@ -27,7 +28,9 @@ public class ChatParticipantService {
     /**
      * Получить список ID участников чата из core-api-service
      * ИСПРАВЛЕНО: теперь использует internal service header для обхода авторизации
+     * ОПТИМИЗИРОВАНО: добавлено кэширование для предотвращения повторных запросов
      */
+    @Cacheable(value = "chatParticipants", key = "#chatId", unless = "#result == null || #result.isEmpty()")
     public List<Long> getChatParticipants(Long chatId) {
         try {
             log.info("📞 [CHAT-PARTICIPANT] Requesting participants for chat {} from core-api (base URL: {})", chatId, coreApiBaseUrl);
