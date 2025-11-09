@@ -224,7 +224,30 @@ public class SessionManager {
 
             // Создаем WebSocket сообщение
             websocket.model.WebSocketMessage wsMessage = new websocket.model.WebSocketMessage();
-            wsMessage.setType(MessageType.CHAT_MESSAGE);
+
+            // ИСПРАВЛЕНО: Определяем тип сообщения на основе поля "type" из Kafka
+            String messageTypeStr = (String) messageData.get("type");
+            MessageType messageType = MessageType.CHAT_MESSAGE; // По умолчанию
+
+            if (messageTypeStr != null) {
+                try {
+                    // Пытаемся преобразовать строку в enum
+                    if ("MESSAGE_READ".equals(messageTypeStr)) {
+                        messageType = MessageType.MESSAGE_READ;
+                        log.info("[BROADCAST] Processing MESSAGE_READ notification");
+                    } else if ("MESSAGE_UPDATE".equals(messageTypeStr)) {
+                        messageType = MessageType.CHAT_MESSAGE; // Можно добавить отдельный тип если нужно
+                        log.info("✏[BROADCAST] Processing MESSAGE_UPDATE notification");
+                    } else if ("NEW_MESSAGE".equals(messageTypeStr)) {
+                        messageType = MessageType.CHAT_MESSAGE;
+                        log.info("[BROADCAST] Processing NEW_MESSAGE");
+                    }
+                } catch (Exception e) {
+                    log.warn("⚠[BROADCAST] Could not parse message type: {}, using default", messageTypeStr);
+                }
+            }
+
+            wsMessage.setType(messageType);
             wsMessage.setContent((String) messageData.get("content"));
             wsMessage.setChatId(chatId);
 
@@ -244,6 +267,31 @@ public class SessionManager {
             if (messageData.containsKey("senderUsername")) {
                 wsMessage.setUsername((String) messageData.get("senderUsername"));
                 wsMessage.setSenderUsername((String) messageData.get("senderUsername"));
+            }
+
+            // Для MESSAGE_READ добавляем информацию о читателе
+            if (messageType == MessageType.MESSAGE_READ) {
+                if (messageData.containsKey("messageId")) {
+                    wsMessage.setMessageId(((Number) messageData.get("messageId")).longValue());
+                }
+                if (messageData.containsKey("readerId")) {
+                    Long readerId = ((Number) messageData.get("readerId")).longValue();
+                    wsMessage.setReaderId(readerId);
+                    wsMessage.setUserId(readerId); // Для совместимости
+                }
+                if (messageData.containsKey("readerUsername")) {
+                    String readerUsername = (String) messageData.get("readerUsername");
+                    wsMessage.setReaderUsername(readerUsername);
+                    wsMessage.setUsername(readerUsername); // Для совместимости
+                }
+                // ИСПРАВЛЕНИЕ: Добавляем senderId для MESSAGE_READ событий
+                if (messageData.containsKey("senderId")) {
+                    Long senderId = ((Number) messageData.get("senderId")).longValue();
+                    wsMessage.setSenderId(senderId);
+                    log.info("📖 [BROADCAST] MESSAGE_READ: Added senderId={}", senderId);
+                }
+                log.info("📖 [BROADCAST] MESSAGE_READ: messageId={}, readerId={}, readerUsername={}, senderId={}",
+                    messageData.get("messageId"), messageData.get("readerId"), messageData.get("readerUsername"), messageData.get("senderId"));
             }
 
             // ВАЖНО: Добавляем тип сообщения (TEXT, IMAGE, FILE)

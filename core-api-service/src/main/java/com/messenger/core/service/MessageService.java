@@ -1,11 +1,14 @@
 package com.messenger.core.service;
 
 import com.messenger.core.dto.MessageDto;
+import com.messenger.core.dto.MessageReadStatusDto;
 import com.messenger.core.model.Chat;
 import com.messenger.core.model.Message;
+import com.messenger.core.model.MessageReadStatus;
 import com.messenger.core.model.User;
 import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.MessageRepository;
+import com.messenger.core.repository.MessageReadStatusRepository;
 import com.messenger.core.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -30,6 +33,7 @@ public class MessageService {
     private final UserRepository userRepository;
     private final UserService userService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final MessageReadStatusRepository messageReadStatusRepository;
 
     /**
      * Отправить сообщение в чат
@@ -181,7 +185,8 @@ public class MessageService {
      */
     private void notifyAboutNewMessage(Message message) {
         Map<String, Object> notification = new HashMap<>();
-        notification.put("type", "NEW_MESSAGE");
+        notification.put("type", "CHAT_MESSAGE"); // ИСПРАВЛЕНО: изменили с NEW_MESSAGE на CHAT_MESSAGE
+        notification.put("id", message.getId()); // ИСПРАВЛЕНО: добавили поле id
         notification.put("messageId", message.getId());
         notification.put("chatId", message.getChat().getId());
         notification.put("senderId", message.getSender().getId());
@@ -219,9 +224,114 @@ public class MessageService {
     }
 
     /**
+     * Уведомить о прочтении сообщения через Kafka
+     */
+    private void notifyAboutMessageRead(Message message, User reader) {
+        Map<String, Object> notification = new HashMap<>();
+        notification.put("type", "MESSAGE_READ");
+        notification.put("messageId", message.getId());
+        notification.put("chatId", message.getChat().getId());
+        notification.put("readerId", reader.getId());
+        notification.put("readerUsername", reader.getUsername());
+        notification.put("senderId", message.getSender().getId());
+        notification.put("timestamp", LocalDateTime.now());
+
+        kafkaTemplate.send("chat-messages", message.getChat().getId().toString(), notification);
+    }
+
+    /**
+     * Получить количество непрочитанных сообщений в чате
+     */
+    @Transactional(readOnly = true)
+    public long getUnreadMessagesCount(Long userId, Long chatId) {
+        return messageReadStatusRepository.countUnreadMessagesInChat(chatId, userId);
+    }
+
+    /**
+     * Получить статусы прочтения для сообщения
+     */
+    @Transactional(readOnly = true)
+    public List<MessageReadStatusDto> getMessageReadStatuses(Long messageId, Long userId) {
+        Message message = messageRepository.findById(messageId)
+            .orElseThrow(() -> new RuntimeException("Сообщение не найдено"));
+
+        // Проверяем доступ
+        Chat chat = message.getChat();
+        boolean isParticipant = chat.getParticipants().stream()
+            .anyMatch(p -> p.getId().equals(userId));
+
+        if (!isParticipant) {
+            throw new IllegalArgumentException("У вас нет доступа к этому сообщению");
+        }
+
+        List<MessageReadStatus> readStatuses = messageReadStatusRepository.findByMessageId(messageId);
+
+        return readStatuses.stream()
+            .map(this::convertReadStatusToDto)
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Отметить сообщения как прочитанные
+     */
+    public void markMessagesAsRead(Long userId, List<Long> messageIds) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+        List<Message> messages = messageRepository.findAllById(messageIds);
+
+        for (Message message : messages) {
+            // Не отмечаем свои собственные сообщения как прочитанные
+            if (message.getSender().getId().equals(userId)) {
+                continue;
+            }
+
+            // Проверяем, не прочитано ли уже
+            if (!messageReadStatusRepository.existsByMessageIdAndUserId(message.getId(), userId)) {
+                MessageReadStatus readStatus = new MessageReadStatus();
+                readStatus.setMessage(message);
+                readStatus.setUser(user);
+                messageReadStatusRepository.save(readStatus);
+
+                // Отправляем уведомление о прочтении
+                notifyAboutMessageRead(message, user);
+            }
+        }
+    }
+
+    /**
+     * Отметить все сообщения в чате как прочитанные
+     */
+    public void markAllChatMessagesAsRead(Long userId, Long chatId) {
+        // Проверяем доступ к чату
+        Chat chat = chatRepository.findById(chatId)
+            .orElseThrow(() -> new RuntimeException("Чат не найден"));
+
+        boolean isParticipant = chat.getParticipants().stream()
+            .anyMatch(p -> p.getId().equals(userId));
+
+        if (!isParticipant) {
+            throw new IllegalArgumentException("У вас нет доступа к этому чату");
+        }
+
+        List<Long> unreadMessageIds = messageReadStatusRepository.findUnreadMessageIdsInChat(chatId, userId);
+
+        if (!unreadMessageIds.isEmpty()) {
+            markMessagesAsRead(userId, unreadMessageIds);
+        }
+    }
+
+    /**
      * Конвертировать Message в MessageDto
      */
     public MessageDto convertToDto(Message message) {
+        return convertToDto(message, null, false);
+    }
+
+    /**
+     * Конвертировать Message в MessageDto с информацией о прочтении
+     */
+    public MessageDto convertToDto(Message message, Long currentUserId, boolean includeReadStatuses) {
         MessageDto dto = new MessageDto();
         dto.setId(message.getId());
         dto.setContent(message.getContent());
@@ -246,6 +356,43 @@ public class MessageService {
             dto.setReplyToMessage(convertToDto(message.getReplyToMessage()));
         }
 
+        // Добавляем информацию о прочтении
+        if (currentUserId != null) {
+            // Проверяем, прочитано ли сообщение текущим пользователем
+            boolean isRead = messageReadStatusRepository.existsByMessageIdAndUserId(message.getId(), currentUserId);
+            dto.setIsReadByCurrentUser(isRead);
+
+            if (isRead) {
+                messageReadStatusRepository.findByMessageIdAndUserId(message.getId(), currentUserId)
+                    .ifPresent(status -> dto.setReadAt(status.getReadAt()));
+            }
+        }
+
+        // Количество прочитавших
+        long readCount = messageReadStatusRepository.countByMessageId(message.getId());
+        dto.setReadCount((int) readCount);
+
+        // Подробный список прочитавших (если запрошено)
+        if (includeReadStatuses) {
+            List<MessageReadStatus> readStatuses = messageReadStatusRepository.findByMessageId(message.getId());
+            List<MessageReadStatusDto> readByDtos = readStatuses.stream()
+                .map(this::convertReadStatusToDto)
+                .collect(Collectors.toList());
+            dto.setReadBy(readByDtos);
+        }
+
+        return dto;
+    }
+
+    /**
+     * Конвертировать MessageReadStatus в DTO
+     */
+    private MessageReadStatusDto convertReadStatusToDto(MessageReadStatus readStatus) {
+        MessageReadStatusDto dto = new MessageReadStatusDto();
+        dto.setId(readStatus.getId());
+        dto.setMessageId(readStatus.getMessage().getId());
+        dto.setUser(userService.convertToDto(readStatus.getUser()));
+        dto.setReadAt(readStatus.getReadAt());
         return dto;
     }
 }

@@ -33,6 +33,11 @@ public class WebSocketMessage {
     private String mimeType;
     private String thumbnailUrl;
 
+    // Поля для поддержки MESSAGE_READ уведомлений
+    private Long messageId; // ID прочитанного сообщения
+    private Long readerId; // ID пользователя, который прочитал
+    private String readerUsername; // Имя пользователя, который прочитал
+
     // Алиас для совместимости с фронтом, который возможно ожидает поле messageType
     @JsonProperty("type")
     public MessageType getTypeEnum() {

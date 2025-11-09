@@ -1,6 +1,7 @@
 package com.messenger.core.controller;
 
 import com.messenger.core.dto.MessageDto;
+import com.messenger.core.dto.MessageReadStatusDto;
 import com.messenger.core.service.MessageService;
 import com.messenger.core.service.OptimizedDataService;
 import com.messenger.core.config.JwtAuthenticationFilter;
@@ -84,6 +85,54 @@ public class MessageController {
         Long userId = getCurrentUserId(request);
         List<MessageDto> messages = messageService.searchMessagesInChat(chatId, userId, query, page, size);
         return ResponseEntity.ok(messages);
+    }
+
+    /**
+     * Отметить сообщения как прочитанные
+     */
+    @PostMapping("/read")
+    public ResponseEntity<Void> markMessagesAsRead(
+            @RequestBody List<Long> messageIds,
+            HttpServletRequest request) {
+        Long userId = getCurrentUserId(request);
+        messageService.markMessagesAsRead(userId, messageIds);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Отметить все сообщения в чате как прочитанные
+     */
+    @PostMapping("/chat/{chatId}/read-all")
+    public ResponseEntity<Void> markAllChatMessagesAsRead(
+            @PathVariable Long chatId,
+            HttpServletRequest request) {
+        Long userId = getCurrentUserId(request);
+        messageService.markAllChatMessagesAsRead(userId, chatId);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Получить количество непрочитанных сообщений в чате
+     */
+    @GetMapping("/chat/{chatId}/unread-count")
+    public ResponseEntity<Long> getUnreadMessagesCount(
+            @PathVariable Long chatId,
+            HttpServletRequest request) {
+        Long userId = getCurrentUserId(request);
+        long count = messageService.getUnreadMessagesCount(userId, chatId);
+        return ResponseEntity.ok(count);
+    }
+
+    /**
+     * Получить статусы прочтения для конкретного сообщения
+     */
+    @GetMapping("/{messageId}/read-status")
+    public ResponseEntity<List<MessageReadStatusDto>> getMessageReadStatuses(
+            @PathVariable Long messageId,
+            HttpServletRequest request) {
+        Long userId = getCurrentUserId(request);
+        List<MessageReadStatusDto> statuses = messageService.getMessageReadStatuses(messageId, userId);
+        return ResponseEntity.ok(statuses);
     }
 
     /**

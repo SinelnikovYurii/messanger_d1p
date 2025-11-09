@@ -173,6 +173,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         try {
             // Создаем объект сообщения для отправки в Kafka
             Map<String, Object> messageData = new HashMap<>();
+            // Откат: не добавляем поле type, оставляем исходный формат
             messageData.put("content", message.getContent());
             messageData.put("senderId", userId);
             messageData.put("senderUsername", username);

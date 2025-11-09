@@ -84,8 +84,9 @@ public class OptimizedDataService {
         List<Message> messages = messageRepository.findByChatIdOrderByCreatedAtDescWithSender(chatId, pageable);
         log.debug("Found {} messages for chat {}", messages.size(), chatId);
 
+        // Конвертируем с информацией о прочтении для текущего пользователя
         return messages.stream()
-            .map(messageService::convertToDto)
+            .map(message -> messageService.convertToDto(message, userId, false))
             .collect(Collectors.toList());
     }
 

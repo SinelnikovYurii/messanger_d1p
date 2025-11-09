@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -26,6 +27,12 @@ public class MessageDto {
     private Long fileSize;
     private String mimeType;
     private String thumbnailUrl;
+
+    // Поля для статуса прочтения
+    private Boolean isReadByCurrentUser; // Прочитано ли текущим пользователем
+    private Integer readCount; // Количество пользователей, прочитавших сообщение
+    private List<MessageReadStatusDto> readBy; // Список пользователей, прочитавших сообщение
+    private LocalDateTime readAt; // Когда текущий пользователь прочитал сообщение
 
     // DTO для отправки нового сообщения
     @Data
