@@ -1,19 +1,33 @@
+# ==========================================
+# Maven
+# ==========================================
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
 
-### IntelliJ IDEA ###
+# ==========================================
+# IntelliJ IDEA
+# ==========================================
 .idea/
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
 *.iws
 *.iml
 *.ipr
+out/
+.idea_modules/
 
-### Eclipse ###
+# ==========================================
+# Eclipse
+# ==========================================
 .apt_generated
 .classpath
 .factorypath
@@ -21,14 +35,11 @@ target/
 .settings
 .springBeans
 .sts4-cache
+bin/
 
-node_modules/
-uploads/
-package-lock.json
-package.json
-
-
-### NetBeans ###
+# ==========================================
+# NetBeans
+# ==========================================
 /nbproject/private/
 /nbbuild/
 /dist/
@@ -38,8 +49,134 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-### VS Code ###
+# ==========================================
+# VS Code
+# ==========================================
 .vscode/
+*.code-workspace
+.history/
 
-### Mac OS ###
+# ==========================================
+# Node.js
+# ==========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log*
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# ==========================================
+# Environment Variables & Config
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# ==========================================
+# Logs
+# ==========================================
+*.log
+logs/
+*.log.*
+log/
+
+# ==========================================
+# Operating System
+# ==========================================
+# Mac OS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ==========================================
+# Docker
+# ==========================================
+*.env.docker
+docker-compose.override.yml
+
+# ==========================================
+# Application Specific
+# ==========================================
+# Uploaded files
+uploads/
+!uploads/.gitkeep
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# ==========================================
+# Temporary & Cache Files
+# ==========================================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.cache/
+*.bak
+*.orig
+
+# ==========================================
+# Security & Credentials
+# ==========================================
+*.key
+*.pem
+*.p12
+*.jks
+secrets/
+credentials/
+
+# ==========================================
+# Build & Distribution
+# ==========================================
+*.jar
+*.war
+*.ear
+*.nar
+*.class
+!**/wrapper/*.jar
+
+# ==========================================
+# Testing
+# ==========================================
+coverage/
+*.cover
+.coverage
+.pytest_cache/
+test-results/
+*.log
+
+# ==========================================
+# Other
+# ==========================================
+.gradle/
+*.hprof
+hs_err_pid*
+replay_pid*

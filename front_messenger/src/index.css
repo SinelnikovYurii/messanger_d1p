@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Кастомные анимации для drag-and-drop */
+@keyframes dragPulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+}
+
+@keyframes dragBounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.drag-pulse {
+    animation: dragPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.drag-bounce {
+    animation: dragBounce 1s ease-in-out infinite;
+}
