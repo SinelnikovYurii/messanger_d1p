@@ -1,0 +1,3 @@
+[submodule "messanger_front"]
+	path = messanger_front
+	url = https://github.com/SinelnikovYurii/messanger_front.git
