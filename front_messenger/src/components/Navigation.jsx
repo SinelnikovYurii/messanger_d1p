@@ -90,20 +90,22 @@ const Navigation = () => {
   ];
 
   return (
-    <nav className="bg-white border-b border-gray-200 px-4 py-2">
+    <nav className="px-4 py-2" style={{ backgroundColor: '#F5F5DC', borderBottom: '2px solid #B22222' }}>
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1">
-          <h1 className="text-lg sm:text-xl font-bold text-gray-800 truncate">Мессенджер</h1>
+          <h1 className="text-lg sm:text-xl font-bold truncate" style={{ color: '#B22222', letterSpacing: '1px' }}>Brickwall</h1>
           <div className="hidden sm:flex space-x-1">
             {navItems.map((item) => (
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`flex items-center space-x-2 px-3 sm:px-4 py-2 rounded-lg transition-colors ${
-                  location.pathname === item.path
-                    ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
+                className={`flex items-center space-x-2 px-3 sm:px-4 py-2 rounded-lg transition-colors`}
+                style={{
+                  backgroundColor: location.pathname === item.path ? '#B22222' : 'transparent',
+                  color: location.pathname === item.path ? '#F5F5DC' : '#222',
+                  border: location.pathname === item.path ? '1px solid #B22222' : 'none',
+                  boxShadow: location.pathname === item.path ? '0 2px 8px rgba(178,34,34,0.08)' : 'none'
+                }}
               >
                 {item.icon}
                 <span className="whitespace-nowrap">{item.label}</span>
@@ -117,11 +119,13 @@ const Navigation = () => {
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`flex items-center justify-center p-2 rounded-lg transition-colors ${
-                  location.pathname === item.path
-                    ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
+                className={`flex items-center justify-center p-2 rounded-lg transition-colors`}
+                style={{
+                  backgroundColor: location.pathname === item.path ? '#B22222' : 'transparent',
+                  color: location.pathname === item.path ? '#F5F5DC' : '#222',
+                  border: location.pathname === item.path ? '1px solid #B22222' : 'none',
+                  boxShadow: location.pathname === item.path ? '0 2px 8px rgba(178,34,34,0.08)' : 'none'
+                }}
                 title={item.label}
               >
                 {item.icon}
@@ -133,7 +137,7 @@ const Navigation = () => {
         <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
           {user && (
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center overflow-hidden">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden" style={{ backgroundColor: '#B22222', border: '2px solid #8B1A1A' }}>
                 {getAvatarUrl(user.profilePictureUrl) ? (
                   <img
                     src={getAvatarUrl(user.profilePictureUrl)}
@@ -154,7 +158,7 @@ const Navigation = () => {
                   {getUserInitials(user.username)}
                 </span>
               </div>
-              <span className="text-gray-700 hidden sm:block truncate max-w-32">
+              <span className="hidden sm:block truncate max-w-32" style={{ color: '#222' }}>
                 {user.username || 'Пользователь'}
               </span>
             </div>
@@ -162,7 +166,8 @@ const Navigation = () => {
 
           <button
             onClick={handleLogout}
-            className="flex items-center space-x-1 text-gray-600 hover:text-red-600 transition-colors p-2 sm:px-3 sm:py-2 rounded-lg hover:bg-gray-100"
+            className="flex items-center space-x-1 p-2 sm:px-3 sm:py-2 rounded-lg transition-colors"
+            style={{ backgroundColor: '#F5F5DC', color: '#B22222', border: '1px solid #B22222' }}
             title="Выход"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

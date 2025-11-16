@@ -178,19 +178,15 @@ public class OptimizedDataService {
                 if (otherParticipant.getProfilePictureUrl() != null) {
                     // Устанавливаем аватарку собеседника
                     dto.setChatAvatarUrl(otherParticipant.getProfilePictureUrl());
-                    log.info("✅ Установлена аватарка собеседника для чата {}: {}", chat.getId(), otherParticipant.getProfilePictureUrl());
                 } else {
                     dto.setChatAvatarUrl(chat.getChatAvatarUrl());
-                    log.info("⚠️ У собеседника нет аватарки, используем аватарку чата: {}", chat.getChatAvatarUrl());
                 }
             } else {
                 dto.setChatAvatarUrl(chat.getChatAvatarUrl());
-                log.warn("❌ Не найден собеседник для приватного чата {}", chat.getId());
             }
         } else {
             // Для групповых чатов используем аватарку группы
             dto.setChatAvatarUrl(chat.getChatAvatarUrl());
-            log.info("Установлена аватарка группы для чата {}: {}", chat.getId(), chat.getChatAvatarUrl());
         }
 
         dto.setCreatedAt(chat.getCreatedAt());
@@ -213,7 +209,7 @@ public class OptimizedDataService {
             dto.setLastMessage(messageService.convertToDto(lastMessage));
         }
 
-        // ИСПРАВЛЕНО: Устанавливаем количество непрочитанных сообщений
+        // Устанавливаем количество непрочитанных сообщений
         dto.setUnreadCount(unreadCount != null ? unreadCount : 0);
 
         return dto;

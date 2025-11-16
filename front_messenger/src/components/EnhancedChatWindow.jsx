@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { useSelector } from 'react-redux';
 import chatService from '../services/chatService';
 import UserSearchModal from './UserSearchModal';
 import FileUpload, { useDragAndDrop } from './FileUpload';
+import './EnhancedChatWindow.css';
 
 const ChatWindow = ({ selectedChat, onChatUpdate }) => {
     const [newMessage, setNewMessage] = useState('');
@@ -20,7 +21,6 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
     const messagesContainerRef = useRef(null);
     const lastLoadedChatId = useRef(null);
     const scrollTimeoutRef = useRef(null);
-    const previousScrollHeightRef = useRef(0);
     const loadingTimeoutRef = useRef(null); // Для отмены загрузки при быстром переключении
     const isInitialScrollDone = useRef(false); // Ref вместо state для избежания лишних рендеров
     const markAsReadTimeoutRef = useRef(null); // Таймаут для отметки сообщений как прочитанных
@@ -31,6 +31,12 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
     const addfriend_icon = 'addfriend.png';
     const info_icon = 'info.png';
     const PAGE_SIZE = 30;
+    const TOP_LAZY_LOAD_THRESHOLD = 200;
+    const BOTTOM_STICKY_THRESHOLD = 120;
+
+    // Состояние для анимации перехода между чатами
+    const [chatTransitionStage, setChatTransitionStage] = useState('idle'); // 'fadeOut' | 'fadeIn' | 'idle'
+    const prevChatIdRef = useRef(null);
 
     // Функция получения ID текущего пользователя - оборачиваем в useCallback
     const getCurrentUserId = useCallback(() => {
@@ -51,6 +57,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                     behavior: smooth ? 'smooth' : 'auto'
                 };
                 container.scrollTo(scrollOptions);
+                shouldAutoScrollRef.current = true;
             }
         };
 
@@ -112,12 +119,12 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
         try {
             const info = await chatService.getChatInfo(selectedChat.id);
 
-            // ИСПРАВЛЕНИЕ: Объединяем данные с сервера с актуальными данными из selectedChat
+
             // Приоритет отдаем статусам из selectedChat (они актуальнее, т.к. обновляются через WebSocket)
             const mergedInfo = {
                 ...info,
                 participants: info.participants?.map(serverParticipant => {
-                    // Ищем соответствующего участника в selectedChat
+                    // Ищем соответствующего участника in selectedChat
                     const cachedParticipant = selectedChat.participants?.find(p => p.id === serverParticipant.id);
 
                     // Если есть кешированные данные, используем их статусы (они актуальнее)
@@ -230,52 +237,124 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
     }, [messages.length, selectedChat, markChatAsRead]);
 
     // Отдельный эффект для прокрутки после загрузки сообщений
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (messages.length > 0 && !isLoadingMessages && !isInitialScrollDone.current) {
-            // Используем динамическую задержку в зависимости от количества сообщений
-            const delay = Math.min(50 + messages.length * 2, 300);
-
-            loadingTimeoutRef.current = setTimeout(() => {
-                if (messagesContainerRef.current) {
-                    const container = messagesContainerRef.current;
-                    container.scrollTop = container.scrollHeight;
-                    isInitialScrollDone.current = true;
-
-                    console.log('Initial scroll performed:', {
-                        scrollHeight: container.scrollHeight,
-                        scrollTop: container.scrollTop,
-                        messagesCount: messages.length,
-                        delay
-                    });
-
-                    // ВАЖНО: сразу отмечаем как прочитанные после первоначальной прокрутки
-                    // чтобы статусы прочтения уходили мгновенно, а отправителю прилетало MESSAGE_READ
-                    setTimeout(() => {
-                        // дополнительная микро-задержка, чтобы дать DOM стабилизироваться
-                        try {
-                            markChatAsRead();
-                        } catch (e) {
-                            console.error('Failed to mark chat as read after initial scroll:', e);
-                        }
-                    }, 150);
-                }
-            }, delay);
-
-            return () => {
-                if (loadingTimeoutRef.current) {
-                    clearTimeout(loadingTimeoutRef.current);
-                }
-            };
+            if (messagesContainerRef.current) {
+                const container = messagesContainerRef.current;
+                container.scrollTop = container.scrollHeight;
+                isInitialScrollDone.current = true;
+                // Сразу отмечаем как прочитанные
+                markChatAsRead();
+            }
         }
     }, [messages.length, isLoadingMessages, markChatAsRead]);
 
     // Effect для прокрутки при получении новых сообщений (не при первой загрузке)
     useEffect(() => {
         if (messages.length > 0 && !isLoadingMessages && isInitialScrollDone.current) {
-            // Плавная прокрутка для новых сообщений
-            scrollToBottom(true);
+            const container = messagesContainerRef.current;
+            if (!container) return;
+            const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+            shouldAutoScrollRef.current = distanceFromBottom <= BOTTOM_STICKY_THRESHOLD;
+
+            if (shouldAutoScrollRef.current) {
+                scrollToBottom(true);
+            }
         }
     }, [messages.length, isLoadingMessages, scrollToBottom]);
+
+    // Для восстановления позиции первого видимого сообщения
+    const messageRefs = useRef({});
+    const firstVisibleMessageIdRef = useRef(null);
+    const shouldAutoScrollRef = useRef(true);
+
+    // Функция для загрузки старых сообщений (при прокрутке вверх)
+    const loadOlderMessages = useCallback(async () => {
+        if (!selectedChat || isLoadingOlderMessages || !hasMoreMessages || isLoadingMessages) {
+            return;
+        }
+
+        try {
+            setIsLoadingOlderMessages(true);
+            const nextPage = currentPage + 1;
+            const container = messagesContainerRef.current;
+            if (!container) return;
+
+            // ИСПРАВЛЕНИЕ: Блокируем автопрокрутку вниз при загрузке старых сообщений
+            shouldAutoScrollRef.current = false;
+
+            // Сохраняем id первого видимого сообщения
+            const messageElements = Object.values(messageRefs.current);
+            let firstVisibleId = null;
+            for (let i = 0; i < messageElements.length; i++) {
+                const el = messageElements[i];
+                if (el && el.getBoundingClientRect().top >= container.getBoundingClientRect().top) {
+                    firstVisibleId = el.dataset.messageId;
+                    break;
+                }
+            }
+            firstVisibleMessageIdRef.current = firstVisibleId;
+            const prevScrollHeight = container.scrollHeight;
+            const prevScrollTop = container.scrollTop;
+
+            const olderMessages = await chatService.getChatMessages(selectedChat.id, nextPage, PAGE_SIZE);
+            if (olderMessages.length === 0 || olderMessages.length < PAGE_SIZE) {
+                setHasMoreMessages(false);
+            }
+            if (olderMessages.length > 0) {
+                const reversedOlderMessages = [...olderMessages].reverse();
+                setMessages(prev => {
+                    const existingIds = new Set(prev.map(m => m.id));
+                    const newMessages = reversedOlderMessages.filter(m => !existingIds.has(m.id));
+                    return [...newMessages, ...prev];
+                });
+                setCurrentPage(nextPage);
+
+                // ИСПРАВЛЕНИЕ: Используем более надежный метод восстановления позиции
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        if (messagesContainerRef.current) {
+                            const heightDiff = messagesContainerRef.current.scrollHeight - prevScrollHeight;
+                            messagesContainerRef.current.scrollTop = prevScrollTop + heightDiff;
+                        }
+                    });
+                });
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки старых сообщений:', error);
+        } finally {
+            setIsLoadingOlderMessages(false);
+        }
+    }, [selectedChat, isLoadingOlderMessages, hasMoreMessages, isLoadingMessages, currentPage, PAGE_SIZE]);
+
+    // Обработчик скролла для lazy load
+    const handleScroll = useCallback(() => {
+        const container = messagesContainerRef.current;
+        if (!container || isLoadingOlderMessages || !hasMoreMessages || isLoadingMessages) return;
+
+        // Обновляем флаг автопрокрутки: если пользователь внизу чата, включаем автопрокрутку
+        const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+        shouldAutoScrollRef.current = distanceFromBottom <= BOTTOM_STICKY_THRESHOLD;
+
+        // Загружаем старые сообщения если прокрутили вверх
+        if (container.scrollTop < TOP_LAZY_LOAD_THRESHOLD) {
+            // Находим первый видимый элемент для восстановления позиции
+            for (let i = 0; i < messages.length; i++) {
+                const msg = messages[i];
+                const el = messageRefs.current[msg.id];
+                if (el) {
+                    const rect = el.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    if (rect.bottom > containerRect.top) {
+                        firstVisibleMessageIdRef.current = msg.id;
+                        break;
+                    }
+                }
+            }
+            console.log('Triggering lazy load, first visible message:', firstVisibleMessageIdRef.current);
+            loadOlderMessages();
+        }
+    }, [isLoadingOlderMessages, hasMoreMessages, isLoadingMessages, loadOlderMessages, messages]);
 
     // Очистка таймаутов при размонтировании
     useEffect(() => {
@@ -300,37 +379,6 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
             }
 
             switch (event.eventType) {
-                case 'CHAT_CREATED':
-                    // Обновляем информацию о чате
-                    loadChatInfo();
-                    break;
-                case 'PARTICIPANTS_ADDED':
-                    // Добавлены новые участники
-                    loadChatInfo();
-                    break;
-                case 'PARTICIPANT_REMOVED':
-                case 'PARTICIPANT_LEFT':
-                    // Участник удален или покинул чат
-                    loadChatInfo();
-                    break;
-                case 'CREATOR_CHANGED':
-                    // Изменился создатель чата
-                    loadChatInfo();
-                    break;
-                case 'MESSAGE_RECEIVED':
-                    // Получено новое сообщение
-                    if (event.message) {
-                        setMessages(prev => {
-                            // Проверяем, нет ли уже такого сообщения
-                            const exists = prev.some(msg => msg.id === event.message.id);
-                            if (exists) {
-                                return prev;
-                            }
-                            return [...prev, event.message];
-                        });
-                    }
-                    // УБИРАЕМ автоматическую перезагрузку сообщений
-                    break;
                 default:
                     console.log('Unhandled chat event type:', event.eventType);
             }
@@ -358,7 +406,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                             return {
                                 ...participant,
                                 isOnline: isOnline,
-                                // ИСПРАВЛЕНИЕ: Используем lastSeen из сообщения (он уже актуальный из БД)
+                                // Используем lastSeen из сообщения (он уже актуальный из БД)
                                 lastSeen: message.lastSeen || (isOnline ? null : new Date().toISOString())
                             };
                         }
@@ -370,7 +418,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                         participants: updatedParticipants
                     };
 
-                    // ИСПРАВЛЕНИЕ: Уведомляем родительский компонент об обновлении
+                    // Уведомляем родительский компонент об обновлении
                     if (onChatUpdate) {
                         onChatUpdate(updatedInfo);
                     }
@@ -378,7 +426,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                     return updatedInfo;
                 });
 
-                // ИСПРАВЛЕНИЕ: Принудительно обновляем UI для перерисовки времени
+                // Принудительно обновляем UI для перерисовки времени
                 setOnlineStatusVersion(prev => prev + 1);
 
                 return;
@@ -386,51 +434,39 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
 
             // Обрабатываем уведомления о прочтении сообщений
             if (message.type === 'MESSAGE_READ') {
-                console.log('📖 [MESSAGE_READ] Notification received:', message);
+
 
                 const incomingMessageId = message.messageId ?? message.id ?? message.message_id;
-                console.log('📖 [MESSAGE_READ] Normalized MessageId:', incomingMessageId);
-                console.log('📖 [MESSAGE_READ] ReaderId:', message.readerId, 'SenderId:', message.senderId);
-                console.log('📖 [MESSAGE_READ] Current user ID:', getCurrentUserId());
+
 
                 // ИСПРАВЛЕНИЕ: Обновляем readCount только если текущий пользователь - автор сообщения
                 if (message.senderId === getCurrentUserId()) {
-                    console.log('📖 [MESSAGE_READ] This is MY message - updating readCount');
+
 
                     const msgIdKey = String(incomingMessageId);
                     let applied = false;
 
                     setMessages(prev => {
                         // ОТЛАДКА: Выводим все id сообщений в state
-                        console.log('📖 [MESSAGE_READ] 🔍 All message IDs in state:', prev.map(m => ({
+                        console.log('[MESSAGE_READ] All message IDs in state:', prev.map(m => ({
                             id: m.id,
                             normalized: String(m.id ?? m.messageId ?? m.message_id),
                             content: m.content?.substring(0, 30),
                             sender: m.sender?.id
                         })));
-                        console.log('📖 [MESSAGE_READ] 🔍 Looking for normalized key:', msgIdKey);
+                        console.log('[MESSAGE_READ] Looking for normalized key:', msgIdKey);
 
                         const updated = prev.map(msg => {
                             // Нормализуем id для сравнения: используем String для устойчивости к типам
                             const msgIdNormalized = String(msg.id ?? msg.messageId ?? msg.message_id);
 
-                            // ОТЛАДКА: Логируем каждое сравнение
-                            if (msg.sender?.id === getCurrentUserId()) {
-                                console.log('📖 [MESSAGE_READ] 🔍 Comparing:', {
-                                    msgIdNormalized,
-                                    msgIdKey,
-                                    equals: msgIdNormalized === msgIdKey,
-                                    msgId: msg.id,
-                                    content: msg.content?.substring(0, 30)
-                                });
-                            }
 
-                            // ИСПРАВЛЕНО: используем нормализованное сравнение идентификаторов
+                            // используем нормализованное сравнение идентификаторов
                             if (msgIdNormalized === msgIdKey) {
                                 applied = true;
                                 const newReadCount = (msg.readCount || 0) + 1;
-                                console.log('📖 [MESSAGE_READ] ✅ Updating message:', msg.id, 'readCount:', (msg.readCount || 0), '->', newReadCount);
-                                console.log('📖 [MESSAGE_READ] Reader:', message.readerUsername);
+                                console.log('[MESSAGE_READ] Updating message:', msg.id, 'readCount:', (msg.readCount || 0), '->', newReadCount);
+                                console.log('[MESSAGE_READ] Reader:', message.readerUsername);
                                 return {
                                     ...msg,
                                     readCount: newReadCount,
@@ -441,7 +477,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                         });
 
                         if (applied) {
-                            console.log('📖 [MESSAGE_READ] ✅ State updated successfully!');
+                            console.log('[MESSAGE_READ] State updated successfully!');
                         }
 
                         return updated;
@@ -451,18 +487,18 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                     if (!applied) {
                         const current = pendingReadMapRef.current.get(msgIdKey) || 0;
                         pendingReadMapRef.current.set(msgIdKey, current + 1);
-                        console.log('📖 [MESSAGE_READ] ⏳ Stored pending read increment for messageId=', msgIdKey, ' -> ', current + 1);
-                        console.log('📖 [MESSAGE_READ] ⚠️ Message not found in state! Check if it was loaded or has different ID');
+                        console.log('[MESSAGE_READ] Stored pending read increment for messageId=', msgIdKey, ' -> ', current + 1);
+                        console.log('[MESSAGE_READ] Message not found in state! Check if it was loaded or has different ID');
                     }
                 } else {
-                    console.log('📖 [MESSAGE_READ] Not my message (senderId:', message.senderId, '!==', getCurrentUserId(), ') - ignoring');
+                    console.log('[MESSAGE_READ] Not my message (senderId:', message.senderId, '!==', getCurrentUserId(), ') - ignoring');
                 }
                 return;
             }
 
             // Обрабатываем только сообщения чата
             if (message.type === 'CHAT_MESSAGE' && message.chatId === selectedChat?.id) {
-                console.log('💬 [CHAT_MESSAGE] Received:', message);
+                console.log('[CHAT_MESSAGE] Received:', message);
 
                 setMessages(prev => {
                     const senderId = message.senderId || message.userId;
@@ -471,8 +507,8 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                     const incomingId = message.id ?? message.messageId ?? message.message_id ?? `ws-${Date.now()}`;
                     const incomingIdKey = String(incomingId);
 
-                    console.log('💬 [CHAT_MESSAGE] Normalized incoming ID:', incomingIdKey);
-                    console.log('💬 [CHAT_MESSAGE] SenderId:', senderId, 'Current user:', getCurrentUserId());
+                    console.log('[CHAT_MESSAGE] Normalized incoming ID:', incomingIdKey);
+                    console.log('[CHAT_MESSAGE] SenderId:', senderId, 'Current user:', getCurrentUserId());
 
                     // ИСПРАВЛЕНИЕ: Если приходит сообщение с реальным ID (не ws-*), ищем и удаляем временные сообщения
                     const isRealId = !String(incomingId).startsWith('ws-') && !String(incomingId).startsWith('temp-');
@@ -483,11 +519,6 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                             const sameContent = msg.content && message.content && msg.content === message.content;
                             const sameFile = msg.fileUrl && message.fileUrl && msg.fileUrl === message.fileUrl;
                             if (sameContent || sameFile) {
-                                console.log('💬 [CHAT_MESSAGE] ✅ Removing optimistic message:', {
-                                    optimisticId: msg.id,
-                                    realId: incomingIdKey,
-                                    content: msg.content
-                                });
                                 return false;
                             }
                         }
@@ -499,7 +530,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                             const sameSender = String(msgSenderId) === String(senderId);
 
                             if (sameContent && sameSender) {
-                                console.log('💬 [CHAT_MESSAGE] ✅ Replacing temporary message with real ID:', {
+                                console.log('[CHAT_MESSAGE] Replacing temporary message with real ID:', {
                                     tempId: msg.id,
                                     realId: incomingIdKey,
                                     content: msg.content
@@ -512,7 +543,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                     });
 
                     if (!message.content && !message.fileUrl) {
-                        console.log('💬 [CHAT_MESSAGE] ⚠️ Ignoring empty message:', message);
+                        console.log('[CHAT_MESSAGE] Ignoring empty message:', message);
                         return withoutOptimisticAndTemp;
                     }
 
@@ -529,7 +560,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                     });
 
                     if (exists) {
-                        console.log('💬 [CHAT_MESSAGE] ⚠️ Message with same real ID already exists, skipping duplicate:', message);
+                        console.log('[CHAT_MESSAGE] Message with same real ID already exists, skipping duplicate:', message);
                         return withoutOptimisticAndTemp;
                     }
 
@@ -555,10 +586,10 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                     if (inc) {
                         newMessage.readCount = (newMessage.readCount || 0) + inc;
                         pendingReadMapRef.current.delete(incomingIdKey);
-                        console.log('💬 [CHAT_MESSAGE] 📖 Applied pending read increments to new message id=', newMessage.id, ' +', inc);
+                        console.log('[CHAT_MESSAGE] Applied pending read increments to new message id=', newMessage.id, ' +', inc);
                     }
 
-                    console.log('💬 [CHAT_MESSAGE] ✅ Adding new message:', {
+                    console.log('[CHAT_MESSAGE] Adding new message:', {
                         id: newMessage.id,
                         content: newMessage.content,
                         readCount: newMessage.readCount,
@@ -582,91 +613,33 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
         };
     }, [selectedChat?.id, loadChatInfo, getCurrentUserId]); // ИСПРАВЛЕНО: Добавляем getCurrentUserId в зависимости
 
-    // Функция для загрузки старых сообщений (при прокрутке вверх)
-    const loadOlderMessages = useCallback(async () => {
-        if (!selectedChat || isLoadingOlderMessages || !hasMoreMessages || isLoadingMessages) {
+
+    // После рендера сообщений восстанавливаем scroll к первому видимому сообщению
+    useLayoutEffect(() => {
+        // ИСПРАВЛЕНИЕ: Не прокручиваем если идет загрузка старых сообщений
+        if (isLoadingOlderMessages) {
             return;
         }
 
-        try {
-            setIsLoadingOlderMessages(true);
-            const nextPage = currentPage + 1;
-            console.log(`Loading older messages, page ${nextPage}`);
-
-            // Сохраняем текущую высоту скролла для восстановления позиции
-            if (messagesContainerRef.current) {
-                previousScrollHeightRef.current = messagesContainerRef.current.scrollHeight;
+        // После рендера сообщений восстанавливаем scroll к первому видимому сообщению
+        if (firstVisibleMessageIdRef.current && messagesContainerRef.current) {
+            const el = messageRefs.current[firstVisibleMessageIdRef.current];
+            if (el) {
+                const container = messagesContainerRef.current;
+                container.scrollTop = el.offsetTop - container.offsetTop;
+                console.log('Restored scroll to first visible message:', firstVisibleMessageIdRef.current);
             }
-
-            const olderMessages = await chatService.getChatMessages(selectedChat.id, nextPage, PAGE_SIZE);
-            console.log(`Loaded ${olderMessages.length} older messages`);
-
-            if (olderMessages.length === 0 || olderMessages.length < PAGE_SIZE) {
-                setHasMoreMessages(false);
-            }
-
-            if (olderMessages.length > 0) {
-                setMessages(prev => {
-                    // Реверсируем полученные сообщения (они приходят в DESC порядке)
-                    const reversedOlderMessages = [...olderMessages].reverse();
-
-                    // Добавляем старые сообщения в начало массива
-                    // Проверяем дубликаты
-                    const existingIds = new Set(prev.map(m => m.id));
-                    const newMessages = reversedOlderMessages.filter(m => !existingIds.has(m.id));
-                    return [...newMessages, ...prev];
-                });
-                setCurrentPage(nextPage);
-
-                // Восстанавливаем позицию скролла после рендеринга
-                setTimeout(() => {
-                    if (messagesContainerRef.current) {
-                        const newScrollHeight = messagesContainerRef.current.scrollHeight;
-                        const scrollDiff = newScrollHeight - previousScrollHeightRef.current;
-                        messagesContainerRef.current.scrollTop = scrollDiff;
-                        console.log('Restored scroll position:', {
-                            previousHeight: previousScrollHeightRef.current,
-                            newHeight: newScrollHeight,
-                            scrollTop: scrollDiff
-                        });
-                    }
-                }, 50);
-            }
-        } catch (error) {
-            console.error('Ошибка загрузки старых сообщений:', error);
-        } finally {
-            setIsLoadingOlderMessages(false);
-        }
-    }, [selectedChat, isLoadingOlderMessages, hasMoreMessages, isLoadingMessages, currentPage, PAGE_SIZE]);
-
-    // Обработчик скролла для определения, когда загружать старые сообщения
-    const handleScroll = useCallback(() => {
-        if (!messagesContainerRef.current || isLoadingOlderMessages || !hasMoreMessages) {
+            firstVisibleMessageIdRef.current = null;
             return;
         }
 
-        const container = messagesContainerRef.current;
-        const scrollTop = container.scrollTop;
-        const threshold = 200; // Пикселей от верха для начала загрузки
-
-        // Если пользователь прокрутил близко к верху, загружаем старые сообщения
-        if (scrollTop < threshold) {
-            console.log('Near top, loading older messages...');
-            loadOlderMessages();
+        // ИСПРАВЛЕНИЕ: Прокручиваем вниз только если пользователь находится внизу чата
+        if (shouldAutoScrollRef.current && !isLoadingOlderMessages) {
+            scrollToBottom();
         }
-    }, [isLoadingOlderMessages, hasMoreMessages, loadOlderMessages]);
+    }, [messages, scrollToBottom, isLoadingOlderMessages]);
 
-    // Добавляем обработчик скролла
-    useEffect(() => {
-        const container = messagesContainerRef.current;
-        if (!container) return;
-
-        container.addEventListener('scroll', handleScroll);
-        return () => {
-            container.removeEventListener('scroll', handleScroll);
-        };
-    }, [handleScroll]);
-
+    // Функция отправки сообщения
     const handleSendMessage = async (e) => {
         e.preventDefault();
         if (newMessage.trim() && selectedChat) {
@@ -891,13 +864,57 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
         console.log('isDragging state changed:', isDragging);
     }, [isDragging]);
 
+    // Запуск анимации перехода между чатами
+    useEffect(() => {
+        if (!selectedChat) return;
+        setChatTransitionStage('fadeOut');
+        const timer = setTimeout(() => {
+            setChatTransitionStage('fadeIn');
+        }, 250);
+        return () => clearTimeout(timer);
+    }, [selectedChat?.id]);
+
+    // Новый эффект для отслеживания загрузки изображений
+useEffect(() => {
+    if (!messagesContainerRef.current) return;
+    const container = messagesContainerRef.current;
+    const images = container.querySelectorAll('img');
+    let loadedCount = 0;
+    if (images.length === 0) {
+        if (shouldAutoScrollRef.current) scrollToBottom(false);
+        return;
+    }
+    const handleImgLoad = () => {
+        loadedCount++;
+        if (loadedCount === images.length) {
+            if (shouldAutoScrollRef.current) scrollToBottom(false);
+        }
+    };
+    images.forEach(img => {
+        if (img.complete) {
+            loadedCount++;
+        } else {
+            img.addEventListener('load', handleImgLoad);
+            img.addEventListener('error', handleImgLoad);
+        }
+    });
+    if (loadedCount === images.length) {
+        if (shouldAutoScrollRef.current) scrollToBottom(false);
+    }
+    return () => {
+        images.forEach(img => {
+            img.removeEventListener('load', handleImgLoad);
+            img.removeEventListener('error', handleImgLoad);
+        });
+    };
+}, [messages.length, selectedChat?.id]);
 
     if (!selectedChat) {
         return (
-            <div className="flex-1 flex items-center justify-center bg-gray-50">
-                <div className="text-center">
-                    <div className="text-gray-500 text-lg mb-2">Выберите чат для начала общения</div>
-                    <div className="text-gray-400">Или найдите пользователей для создания нового чата</div>
+            <div className="flex-1 flex items-center justify-center bg-gray-50" style={{backgroundImage: "url('/chat_background_n.png')", backgroundSize: '400px', backgroundRepeat: 'repeat', backgroundPosition: 'center'}}>
+                <div className="text-center px-6 py-5" style={{border: '2px solid #F5F5DC', borderRadius: '18px', backgroundColor: '#F5F5DC', boxShadow: '0 2px 12px rgba(178,34,34,0.08)', display: 'inline-block'}}>
+                    <div className="text-lg mb-2" style={{color: '#B22222'}}>Выберите чат для начала общения</div>
+                    <div style={{color: '#B22222'}}>Или найдите пользователей для создания нового чата</div>
                 </div>
             </div>
         );
@@ -905,19 +922,20 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
 
     return (
         <>
-            <div className="flex-1 flex flex-col bg-white" {...dragHandlers} style={{ position: 'relative' }}>
+            {/* Весь основной JSX внутри одного фрагмента */}
+            <div className="flex-1 flex flex-col" {...dragHandlers} style={{ position: 'relative', backgroundColor: 'rgb(93 10 22 / 88%)' }}>
                 {/* Заголовок чата */}
-                <div className="border-b border-gray-200 p-4 bg-white">
+                <div className="border-b" style={{ padding: '14px', backgroundColor: '#8B1A1A', borderColor: '#B22222' }}>
                     <div className="flex items-center justify-between">
                         <div className="flex flex-col">
                             <div className="flex items-center">
-                                <h2 className="text-lg font-semibold">{getChatTitle()}</h2>
-                                {selectedChat.chatType === 'GROUP' && chatInfo && (
-                                    <span className="ml-2 text-sm text-gray-500">
-                                        ({chatInfo.participants?.length || 0} участников)
-                                    </span>
-                                )}
+                                <h2 className="text-lg font-bold" style={{ color: '#F5F5DC', letterSpacing: '1px' }}>{getChatTitle()}</h2>
                             </div>
+                            {selectedChat.chatType === 'GROUP' && chatInfo && (
+                                <span className="text-sm mt-1" style={{ color: '#F5F5DC' }}>
+                                    ({chatInfo.participants?.length || 0} участников)
+                                </span>
+                            )}
                             {/* Статус онлайн / последний визит для приватных чатов */}
                             {selectedChat.chatType !== 'GROUP' && (() => {
                                 const otherParticipant = getOtherParticipant();
@@ -926,11 +944,11 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                                         <div className="flex items-center mt-1">
                                             {otherParticipant.isOnline ? (
                                                 <>
-                                                    <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
-                                                    <span className="text-sm text-green-600">в сети</span>
+                                                    <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: '#228B22' }}></div>
+                                                    <span className="text-sm" style={{ color: '#228B22' }}>в сети</span>
                                                 </>
                                             ) : (
-                                                <span className="text-sm text-gray-500">
+                                                <span className="text-sm" style={{ color: '#F5F5DC' }}>
                                                     {otherParticipant.lastSeen
                                                         ? `был(а) ${formatLastSeen(otherParticipant.lastSeen)}`
                                                         : 'был(а) давно'}
@@ -947,14 +965,16 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                                 <>
                                     <button
                                         onClick={() => setShowAddParticipants(true)}
-                                        className="text-blue-600 hover:text-blue-800 p-2"
+                                        className="p-2 rounded-full"
+                                        style={{ backgroundColor: '#F5F5DC', color: '#B22222' }}
                                         title="Добавить участников"
                                     >
                                         <img src={addfriend_icon} alt="" className="w-5 h-5 opacity-90 group-hover:opacity-100" draggable="false" />
                                     </button>
                                     <button
                                         onClick={handleLeaveChat}
-                                        className="text-red-600 hover:text-red-800 p-2"
+                                        className="p-2 rounded-full"
+                                        style={{ backgroundColor: '#F5F5DC', color: '#B22222' }}
                                         title="Покинуть чат"
                                     >
                                         Выйти
@@ -963,7 +983,8 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                             )}
                             <button
                                 onClick={() => setShowChatInfo(!showChatInfo)}
-                                className="text-gray-600 hover:text-gray-800 p-2"
+                                className="p-2 rounded-full"
+                                style={{ backgroundColor: '#F5F5DC', color: '#B22222' }}
                                 title="Информация о чате"
                             >
                                 <img src={info_icon} alt="" className="w-5 h-5 opacity-90 group-hover:opacity-100" draggable="false" />
@@ -974,151 +995,154 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
 
                 {/* Информация о чате */}
                 {showChatInfo && chatInfo && (
-                    <div className="bg-gray-50 border-b border-gray-200 p-4">
-                        <h3 className="font-medium mb-2">Участники чата:</h3>
+                    <div className="border-b p-4" style={{ backgroundColor: '#FFF8F0', borderColor: '#B22222' }}>
+                        <h3 className="font-bold mb-2" style={{ color: '#B22222' }}>Участники чата:</h3>
                         <div className="flex flex-wrap gap-2">
                             {chatInfo.participants?.map(participant => (
-                                <div key={participant.id} className="flex items-center bg-white rounded-full px-3 py-1 border">
-                                    <div className={`w-2 h-2 rounded-full mr-2 ${participant.isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                                    <span className="text-sm">{participant.username}</span>
+                                <div key={participant.id} className="flex items-center rounded-full px-3 py-1 border" style={{ backgroundColor: '#F5F5DC', borderColor: '#B22222' }}>
+                                    <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: participant.isOnline ? '#228B22' : '#B22222' }}></div>
+                                    <span className="text-sm" style={{ color: '#222' }}>{participant.username}</span>
                                 </div>
                             ))}
                         </div>
                         {selectedChat.chatDescription && (
                             <div className="mt-3">
-                                <div className="text-sm font-medium text-gray-700">Описание:</div>
-                                <div className="text-sm text-gray-600">{selectedChat.chatDescription}</div>
+                                <div className="text-sm font-bold" style={{ color: '#B22222' }}>Описание:</div>
+                                <div className="text-sm" style={{ color: '#444' }}>{selectedChat.chatDescription}</div>
                             </div>
                         )}
                     </div>
                 )}
 
-                {/* Список сообщений */}
+                {/* Список сообщений с анимацией перехода */}
                 <div
-                    className="flex-1 overflow-y-auto p-4 space-y-4"
+                    className={`flex-1 overflow-y-auto p-4 relative chat-transition-anim enhanced-chat-scrollbar ${chatTransitionStage}`}
                     ref={messagesContainerRef}
+                    onScroll={handleScroll}
                     style={{
-                        // ИСПРАВЛЕНО: убираем скрытие контейнера
-                        // opacity: isInitialScrollDone.current ? 1 : 0,
-                        // transition: 'opacity 0.2s ease-in'
+                        backgroundImage: "url('/chat_background_n.png')",
+                        backgroundSize: '400px',
+                        backgroundRepeat: 'repeat',
+                        backgroundPosition: 'center',
                     }}
                 >
-                    {/* Индикатор загрузки старых сообщений */}
-                    {isLoadingOlderMessages && (
-                        <div className="flex justify-center py-2">
-                            <div className="flex items-center gap-2 text-gray-500">
-                                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                <span className="text-sm">Загрузка старых сообщений...</span>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Сообщение если больше нет старых сообщений */}
-                    {!hasMoreMessages && messages.length > 0 && !isLoadingMessages && (
-                        <div className="flex justify-center py-2">
-                            <div className="text-xs text-gray-400">
-                                Это начало переписки
-                            </div>
-                        </div>
-                    )}
-
-                    {messages.map((message, index) => (
-                        <div
-                            key={message.id || index}
-                            className={`flex ${
-                                message.sender?.id === getCurrentUserId() ? 'justify-end' : 'justify-start'
-                            }`}
-                        >
-                            <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                                message.messageType === 'SYSTEM'
-                                    ? 'bg-gray-200 text-gray-600 text-center text-sm mx-auto'
-                                    : message.sender?.id === getCurrentUserId()
-                                        ? 'bg-blue-500 text-white'
-                                        : 'bg-gray-200 text-gray-800'
-                            }`}>
-                                {message.sender && selectedChat.chatType === 'GROUP' && message.sender.id !== getCurrentUserId() && (
-                                    <div className="text-xs font-medium mb-1 opacity-75">
-                                        {message.sender.username}
-                                    </div>
-                                )}
-
-                                {/* Рендеринг файлов */}
-                                {message.messageType === 'IMAGE' && message.fileUrl && (
-                                    <div className="mb-2">
-                                        <img
-                                            src={chatService.getFileUrl(message.fileUrl)}
-                                            alt={message.fileName || 'Image'}
-                                            className="max-w-full rounded cursor-pointer hover:opacity-90"
-                                            onClick={() => window.open(chatService.getFileUrl(message.fileUrl), '_blank')}
-                                        />
-                                    </div>
-                                )}
-
-                                {message.messageType === 'FILE' && message.fileUrl && (
-                                    <div className="mb-2 p-3 bg-white bg-opacity-20 rounded">
-                                        <a
-                                            href={chatService.getFileUrl(message.fileUrl)}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center hover:underline"
-                                        >
-                                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                            </svg>
-                                            <div>
-                                                <div className="text-sm font-medium">{message.fileName || 'Файл'}</div>
-                                                {message.fileSize && (
-                                                    <div className="text-xs opacity-75">
-                                                        {formatFileSize(message.fileSize)}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </a>
-                                    </div>
-                                )}
-
-                                <div className="break-words">{message.content}</div>
-                                <div className={`text-xs mt-1 flex items-center gap-1 ${
-                                    message.messageType === 'SYSTEM' || message.sender?.id === getCurrentUserId()
-                                        ? 'opacity-75'
-                                        : 'opacity-60'
-                                }`}>
-                                    <span>{formatTime(message.createdAt || message.sentAt)}</span>
-                                    {message.isEdited && <span>(изм.)</span>}
-
-                                    {/* Индикатор статуса прочтения для своих сообщений */}
-                                    {message.sender?.id === getCurrentUserId() && message.messageType !== 'SYSTEM' && (
-                                        <span className="ml-1" title={
-                                            message.readCount > 0
-                                                ? `Прочитано ${message.readCount} ${message.readCount === 1 ? 'пользователем' : 'пользователями'}`
-                                                : 'Отправлено'
-                                        }>
-                                            {message.readCount > 0 ? (
-                                                // Двойная галочка (прочитано) - улучшенный дизайн
-                                                <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                                                    <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round"/>
-                                                    <path d="M9 13l4 4L23 7" strokeLinecap="round" strokeLinejoin="round" opacity="0.9"/>
-                                                </svg>
-                                            ) : (
-                                                // Одна галочка (отправлено) - улучшенный дизайн
-                                                <svg className="w-4 h-4 inline opacity-70" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                                                    <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round"/>
-                                                </svg>
-                                            )}
-                                        </span>
-                                    )}
+                    <div className="space-y-4" style={{ position: 'relative', zIndex: 2 }}>
+                        {/* Сообщение если больше нет старых сообщений */}
+                        {!hasMoreMessages && messages.length > 0 && !isLoadingMessages && (
+                            <div className="flex justify-center py-2">
+                                <div className="text-xs text-gray-400">
+                                    Это начало переписки
                                 </div>
                             </div>
-                        </div>
-                    ))}
-                    <div ref={messagesEndRef} />
+                        )}
+
+                        {messages && messages.map((message, idx) => (
+                            <div
+                                key={message.id || idx}
+                                ref={el => { if (el) messageRefs.current[message.id] = el; }}
+                                data-message-id={message.id}
+                                className={`flex ${message.sender?.id === getCurrentUserId() ? 'justify-end' : ''}`}
+                            >
+                                <div
+                                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg`}
+                                    style={{
+                                        backgroundColor: message.messageType === 'SYSTEM'
+                                            ? '#FFDAB9'
+                                            : message.sender?.id === getCurrentUserId()
+                                                ? '#520808'
+                                                : '#F5DEB3',
+
+
+                                        color: message.messageType === 'SYSTEM'
+                                            ? '#B22222' : message.sender?.id === getCurrentUserId()
+                                                ?'#ffffff' : '#222',
+
+                                        border: message.messageType === 'SYSTEM'
+                                            ? '1px solid #B22222'
+                                            : message.sender?.id === getCurrentUserId()
+                                                ? 'none'
+                                                : '1px solid #EAD6C4',
+                                        boxShadow: '0 2px 8px rgba(178,34,34,0.08)'
+                                    }}
+                                >
+                                    {message.sender && selectedChat.chatType === 'GROUP' && message.sender.id !== getCurrentUserId() && (
+                                        <div className="text-xs font-medium mb-1 opacity-75">
+                                            {message.sender.username}
+                                        </div>
+                                    )}
+                                    {/* Рендеринг файлов */}
+                                    {message.messageType === 'IMAGE' && message.fileUrl && (
+                                        <div className="mb-2">
+                                            <img
+                                                src={chatService.getFileUrl(message.fileUrl)}
+                                                alt={message.fileName || 'Image'}
+                                                className="max-w-full rounded cursor-pointer hover:opacity-90"
+                                                onClick={() => window.open(chatService.getFileUrl(message.fileUrl), '_blank')}
+                                            />
+                                        </div>
+                                    )}
+                                    {message.messageType === 'FILE' && message.fileUrl && (
+                                        <div className="mb-2 p-3 bg-white bg-opacity-20 rounded">
+                                            <a
+                                                href={chatService.getFileUrl(message.fileUrl)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center hover:underline"
+                                            >
+                                                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                </svg>
+                                                <div>
+                                                    <div className="text-sm font-medium">{message.fileName || 'Файл'}</div>
+                                                    {message.fileSize && (
+                                                        <div className="text-xs opacity-75">
+                                                            {formatFileSize(message.fileSize)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </a>
+                                        </div>
+                                    )}
+                                    <div className="break-words">{message.content}</div>
+                                    <div className={`text-xs mt-1 flex items-center gap-1 ${
+                                        message.messageType === 'SYSTEM' || message.sender?.id === getCurrentUserId()
+                                            ? 'opacity-75'
+                                            : 'opacity-60'
+                                    }`}>
+                                        <span>{formatTime(message.createdAt || message.sentAt)}</span>
+                                        {message.isEdited && <span>(изм.)</span>}
+
+                                        {/* Индикатор статуса прочитания для своих сообщений */}
+                                        {message.sender?.id === getCurrentUserId() && message.messageType !== 'SYSTEM' && (
+                                            <span className="ml-1" title={
+                                                message.readCount > 0
+                                                    ? `Прочитано ${message.readCount} ${message.readCount === 1 ? 'пользователем' : 'пользователями'}`
+                                                    : 'Отправлено'
+                                            }>
+                                                {message.readCount > 0 ? (
+                                                    // Двойная галочка (прочитано) - улучшенный дизайн
+                                                    <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round"/>
+                                                        <path d="M9 13l4 4L23 7" strokeLinecap="round" strokeLinejoin="round" opacity="0.9"/>
+                                                    </svg>
+                                                ) : (
+                                                    // Одна галочка (отправлено) - улучшенный дизайн
+                                                    <svg className="w-4 h-4 inline opacity-70" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round"/>
+                                                    </svg>
+                                                )}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        <div ref={messagesEndRef} />
+                    </div>
                 </div>
 
                 {/* Форма отправки сообщений */}
-                <div className="border-t border-gray-200 p-4 bg-white">
+                <div className="border-t p-4" style={{ backgroundColor: '#F5F5DC', borderColor: '#B22222' }}>
                     <form onSubmit={handleSendMessage} className="flex gap-2">
                         <FileUpload
                             ref={fileUploadRef}
@@ -1134,12 +1158,14 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
                             placeholder="Введите сообщение..."
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+                            className="flex-1 px-3 py-2 rounded-md focus:outline-none"
+                            style={{ border: '1px solid #B22222', backgroundColor: '#FFF8F0', color: '#222' }}
                         />
                         <button
                             type="submit"
                             disabled={!newMessage.trim()}
-                            className="bg-blue-500 text-white px-6 py-2 rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                            className="px-6 py-2 rounded-md font-bold"
+                            style={{ backgroundColor: newMessage.trim() ? '#B22222' : '#F5F5DC', color: newMessage.trim() ? '#F5F5DC' : '#B22222', border: 'none' }}
                         >
                             Отправить
                         </button>
@@ -1156,11 +1182,11 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                             pointerEvents: 'none'
                         }}
                     >
-                        <div className="bg-white rounded-2xl p-12 shadow-2xl border-4 border-dashed border-blue-500 drag-pulse">
+                        <div className="bg-white rounded-2xl p-12 shadow-2xl border-4 border-dashed border-red-950 drag-pulse">
                             <div className="text-center">
                                 <div className="mb-6 drag-bounce">
                                     <svg
-                                        className="w-24 h-24 mx-auto text-blue-500"
+                                        className="w-24 h-24 mx-auto text-red-500"
                                         fill="none"
                                         stroke="currentColor"
                                         viewBox="0 0 24 24"
@@ -1176,7 +1202,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                                 <p className="text-2xl font-bold text-gray-800 mb-2">
                                     Отпустите файл здесь
                                 </p>
-                                <p className="text-sm text-gray-600">
+                                <p className="text-sm text-brown-600">
                                     Поддерживаются изображения, документы и другие файлы
                                 </p>
                             </div>
@@ -1192,6 +1218,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                 onUserSelect={handleAddParticipants}
                 mode="multiple"
             />
+
         </>
     );
 };

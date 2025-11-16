@@ -1,0 +1,18 @@
+.chat-transition-anim {
+    background-color: #400d0d;
+    transition: opacity 0.17s cubic-bezier(.4,0,.2,1), transform 0.20s cubic-bezier(.4,0,.2,1);
+}
+.chat-transition-anim.fadeOut {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+    pointer-events: none;
+}
+.chat-transition-anim.fadeIn {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+.chat-transition-anim.idle {
+    opacity: 1;
+    transform: none;
+}
+

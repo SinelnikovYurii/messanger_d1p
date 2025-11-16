@@ -33,21 +33,21 @@ public class ChatParticipantService {
     @Cacheable(value = "chatParticipants", key = "#chatId", unless = "#result == null || #result.isEmpty()")
     public List<Long> getChatParticipants(Long chatId) {
         try {
-            log.info("📞 [CHAT-PARTICIPANT] Requesting participants for chat {} from core-api (base URL: {})", chatId, coreApiBaseUrl);
+            log.info("[CHAT-PARTICIPANT] Requesting participants for chat {} from core-api (base URL: {})", chatId, coreApiBaseUrl);
 
             String url = coreApiBaseUrl + "/api/chats/" + chatId + "/participants";
-            log.info("🔗 [CHAT-PARTICIPANT] Full URL: {}", url);
+            log.info("[CHAT-PARTICIPANT] Full URL: {}", url);
 
             // Создаем заголовки для внутреннего сервиса
             HttpHeaders headers = new HttpHeaders();
             headers.set("X-Internal-Service", "websocket-server"); // Заголовок для внутренних сервисов
             headers.set("X-Service-Auth", "internal-service-key"); // Дополнительная авторизация
 
-            log.info("📋 [CHAT-PARTICIPANT] Sending headers: X-Internal-Service=websocket-server, X-Service-Auth=internal-service-key");
+            log.info("[CHAT-PARTICIPANT] Sending headers: X-Internal-Service=websocket-server, X-Service-Auth=internal-service-key");
 
             HttpEntity<?> entity = new HttpEntity<>(headers);
 
-            log.info("⏳ [CHAT-PARTICIPANT] Making HTTP request to core-api...");
+            log.info("[CHAT-PARTICIPANT] Making HTTP request to core-api...");
             ResponseEntity<List<Long>> response = restTemplate.exchange(
                 url,
                 HttpMethod.GET,
@@ -60,16 +60,16 @@ public class ChatParticipantService {
                 participants = Collections.emptyList();
             }
 
-            log.info("✅ [CHAT-PARTICIPANT] Got {} participants for chat {}: {}",
+            log.info("[CHAT-PARTICIPANT] Got {} participants for chat {}: {}",
                 participants.size(), chatId, participants);
 
             return participants;
 
         } catch (Exception e) {
-            log.error("❌ [CHAT-PARTICIPANT] Failed to get participants for chat {}: {}", chatId, e.getMessage(), e);
+            log.error("[CHAT-PARTICIPANT] Failed to get participants for chat {}: {}", chatId, e.getMessage(), e);
 
             // ВРЕМЕННОЕ РЕШЕНИЕ: возвращаем всех подключенных пользователей
-            log.warn("⚠️ [CHAT-PARTICIPANT] Using fallback - returning all connected users for chat {}", chatId);
+            log.warn("[CHAT-PARTICIPANT] Using fallback - returning all connected users for chat {}", chatId);
             return getAllConnectedUserIds();
         }
     }
@@ -91,13 +91,13 @@ public class ChatParticipantService {
             List<Long> participants = getChatParticipants(chatId);
             boolean isParticipant = participants.contains(userId);
 
-            log.debug("🔍 [CHAT-PARTICIPANT] User {} is {} participant of chat {}",
+            log.debug("[CHAT-PARTICIPANT] User {} is {} participant of chat {}",
                 userId, isParticipant ? "a" : "NOT a", chatId);
 
             return isParticipant;
 
         } catch (Exception e) {
-            log.error("❌ [CHAT-PARTICIPANT] Error checking if user {} is participant of chat {}: {}",
+            log.error("[CHAT-PARTICIPANT] Error checking if user {} is participant of chat {}: {}",
                 userId, chatId, e.getMessage());
             // В случае ошибки возвращаем false для безопасности
             return false;

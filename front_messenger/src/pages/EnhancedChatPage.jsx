@@ -141,7 +141,7 @@ const ChatPage = () => {
         // Они обрабатываются только в EnhancedChatWindow
         const messageId = message.id || message.messageId;
         if (!messageId) {
-          console.log(`[ChatPage][${handlerId}] ⏭️ Skipping optimistic message (id: null)`);
+          console.log(`[ChatPage][${handlerId}] Skipping optimistic message (id: null)`);
           return;
         }
 
@@ -209,9 +209,9 @@ const ChatPage = () => {
           // 2. И чат НЕ выбран в данный момент (мы не смотрим на него)
           if (!isOurMessage && !isChatSelected) {
             chat.unreadCount = (chat.unreadCount || 0) + 1;
-            console.log(`[ChatPage][${handlerId}] ✅ Incrementing unread count for chat ${chatId}: ${chat.unreadCount - 1} -> ${chat.unreadCount}`);
+            console.log(`[ChatPage][${handlerId}] Incrementing unread count for chat ${chatId}: ${chat.unreadCount - 1} -> ${chat.unreadCount}`);
           } else {
-            console.log(`[ChatPage][${handlerId}] ⏭️ Skipping unread increment - isOurMessage: ${isOurMessage}, isChatSelected: ${isChatSelected}`);
+            console.log(`[ChatPage][${handlerId}] Skipping unread increment - isOurMessage: ${isOurMessage}, isChatSelected: ${isChatSelected}`);
           }
 
           // Удаляем чат из текущей позиции
@@ -239,7 +239,7 @@ const ChatPage = () => {
                 : chat
             )
           );
-          console.log(`[ChatPage][${handlerId}] ✅ Reset unread count for chat ${chatId}`);
+          console.log(`[ChatPage][${handlerId}] Reset unread count for chat ${chatId}`);
         }
       }
     };
@@ -418,14 +418,14 @@ const ChatPage = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen" style={{ backgroundColor: '#F5F5DC' }}>
       {/* Боковая панель */}
-      <div className="w-[31rem] bg-white border-r border-gray-200 flex flex-col">
+      <div className="w-[31rem] flex flex-col" style={{ backgroundColor: '#F5F5DC', borderRight: '2px solid #B22222' }}>
         {/* Заголовок */}
-        <div className="p-4 border-b border-gray-200 bg-blue-50">
+        <div className="p-4 border-b shadow-md" style={{ backgroundColor: '#8B1A1A', borderColor: '#B22222', boxShadow: '0 2px 8px rgba(139,26,26,0.10)' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center mr-3 overflow-hidden">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center mr-3 overflow-hidden" style={{ backgroundColor: '#B22222', border: '2px solid #F5F5DC' }}>
                 {user?.profilePictureUrl ? (
                   <img
                     src={`http://localhost:8083${user.profilePictureUrl}`}
@@ -445,16 +445,16 @@ const ChatPage = () => {
                 </span>
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-gray-800">
+                <h1 className="text-lg font-semibold" style={{ color: '#F5F5DC', letterSpacing: '1px' }}>
                   {user?.username || 'Пользователь'}
                 </h1>
                 <div className="flex items-center">
-                  <div className={`w-2 h-2 rounded-full mr-2 ${isWebSocketConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  <span className="text-sm text-gray-600">
+                  <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: isWebSocketConnected ? '#228B22' : '#FFD700', boxShadow: '0 0 4px #228B22' }}></div>
+                  <span className="text-sm" style={{ color: '#F5F5DC' }}>
                     {isWebSocketConnected ? 'В сети' : 'Подключение...'}
                   </span>
                   {connectionError && (
-                    <span className="text-xs text-red-500 ml-2">({connectionError})</span>
+                    <span className="text-xs ml-2" style={{ color: '#FFDAB9' }}>({connectionError})</span>
                   )}
                 </div>
               </div>
@@ -462,14 +462,16 @@ const ChatPage = () => {
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setShowProfileModal(true)}
-                className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-full"
+                className="p-2 rounded-full"
+                style={{ backgroundColor: '#F5F5DC', color: '#B22222', border: '1px solid #B22222', boxShadow: '0 1px 4px rgba(178,34,34,0.10)' }}
                 title="Настройки профиля"
               >
                 <img src={profile_icon} alt="" className="w-5 h-5 opacity-90 group-hover:opacity-100" draggable="false" />
               </button>
               <button
                 onClick={handleLogout}
-                className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-full"
+                className="p-2 rounded-full"
+                style={{ backgroundColor: '#F5F5DC', color: '#B22222', border: '1px solid #B22222', boxShadow: '0 1px 4px rgba(178,34,34,0.10)' }}
                 title="Выйти"
               >
                 <img src={logout_icon} alt="" className="w-5 h-5 opacity-90 group-hover:opacity-100" draggable="false" />
@@ -479,40 +481,44 @@ const ChatPage = () => {
         </div>
 
         {/* Табы */}
-        <div className="flex border-b border-gray-200">
+        <div className="flex border-b" style={{ borderColor: '#B22222' }}>
           <button
             onClick={() => setActiveTab('chats')}
-            className={`flex-1 px-4 py-3 text-sm font-medium ${
-              activeTab === 'chats'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
+            className={`flex-1 px-4 py-3 text-sm font-medium`}
+            style={{
+              color: activeTab === 'chats' ? '#B22222' : '#444',
+              borderBottom: activeTab === 'chats' ? '2px solid #B22222' : '2px solid transparent',
+              backgroundColor: 'transparent'
+            }}
           >
             Чаты
           </button>
           <button
             onClick={() => setActiveTab('friends')}
-            className={`flex-1 px-4 py-3 text-sm font-medium ${
-              activeTab === 'friends'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
+            className={`flex-1 px-4 py-3 text-sm font-medium`}
+            style={{
+              color: activeTab === 'friends' ? '#B22222' : '#444',
+              borderBottom: activeTab === 'friends' ? '2px solid #B22222' : '2px solid transparent',
+              backgroundColor: 'transparent'
+            }}
           >
             Друзья
           </button>
         </div>
 
         {/* Кнопки действий */}
-        <div className="p-4 border-b border-gray-200 space-y-2">
+        <div className="p-4 border-b space-y-2" style={{ borderColor: '#B22222' }}>
           <button
             onClick={() => setShowUserSearch(true)}
-            className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            className="w-full font-bold px-4 py-2 rounded"
+            style={{ backgroundColor: '#B22222', color: '#F5F5DC', border: '1px solid #B22222' }}
           >
             Найти пользователя
           </button>
           <button
             onClick={() => setShowCreateGroup(true)}
-            className="w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            className="w-full font-bold px-4 py-2 rounded"
+            style={{ backgroundColor: '#FFDAB9', color: '#B22222', border: '1px solid #B22222' }}
           >
             Создать групповой чат
           </button>
@@ -523,13 +529,13 @@ const ChatPage = () => {
           {activeTab === 'chats' && (
             <>
               {loading && (
-                <div className="p-4 text-center text-gray-500">
+                <div className="p-4 text-center" style={{ color: '#444' }}>
                   Загрузка чатов...
                 </div>
               )}
 
               {!loading && chats.length === 0 && (
-                <div className="p-4 text-center text-gray-500">
+                <div className="p-4 text-center" style={{ color: '#444' }}>
                   <div className="mb-2">У вас пока нет чатов</div>
                   <div className="text-sm">Найдите пользователей для начала общения</div>
                 </div>
@@ -545,13 +551,15 @@ const ChatPage = () => {
                   <div
                     key={chat.id}
                     onClick={() => setSelectedChat(chat)}
-                    className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${
-                      selectedChat?.id === chat.id ? 'bg-blue-50 border-blue-200' : ''
-                    }`}
+                    className={`p-4 border-b cursor-pointer hover:bg-[#FFF8F0]`}
+                    style={{
+                      backgroundColor: selectedChat?.id === chat.id ? '#FFDAB9' : 'transparent',
+                      borderColor: selectedChat?.id === chat.id ? '#B22222' : '#F5F5DC'
+                    }}
                   >
                     <div className="flex items-center">
-                      {/* ОБНОВЛЕНО: Аватарка чата (для личных - аватарка собеседника) */}
-                      <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mr-3 overflow-hidden flex-shrink-0 relative">
+                      {/* Аватарка чата (для личных - аватарка собеседника) */}
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center mr-3 overflow-hidden flex-shrink-0 relative" style={{ backgroundColor: '#B22222', border: '2px solid #8B1A1A' }}>
                         {chatAvatarUrl ? (
                           <img
                             src={chatAvatarUrl}
@@ -579,24 +587,24 @@ const ChatPage = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-center">
-                          <div className="font-medium truncate text-gray-900">
+                          <div className="font-medium truncate" style={{ color: '#B22222' }}>
                             {getChatTitle(chat)}
                           </div>
-                          <div className="text-xs text-gray-500 ml-2 flex-shrink-0">
+                          <div className="text-xs ml-2 flex-shrink-0" style={{ color: '#444' }}>
                             {formatLastMessageTime(chat.lastMessageAt)}
                           </div>
                         </div>
-                        <div className="text-sm truncate flex items-center text-gray-500">
+                        <div className="text-sm truncate flex items-center" style={{ color: '#444' }}>
                           {formatLastMessage(chat)}
                           {/* Дополнительный индикатор непрочитанных сообщений */}
                           {unreadCount > 0 && (
-                            <span className="ml-2 bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full flex-shrink-0">
+                            <span className="ml-2" style={{ backgroundColor: '#B22222', color: '#F5F5DC', borderRadius: '9999px', padding: '2px 8px', fontSize: '12px' }}>
                               {unreadCount}
                             </span>
                           )}
                         </div>
                         {chat.chatType === 'GROUP' && (
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs" style={{ color: '#444' }}>
                             {chat.participants?.length || 0} участников
                           </div>
                         )}

@@ -198,7 +198,7 @@ const ChatWindow = () => {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4" style={{ backgroundImage: messages.length === 0 && isConnected ? "url('/chat_background_n.png')" : undefined, backgroundSize: '400px', backgroundRepeat: 'repeat', backgroundPosition: 'center' }}>
                 {connectionError && !isConnected ? (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-center">

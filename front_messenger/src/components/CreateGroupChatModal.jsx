@@ -110,17 +110,26 @@ const CreateGroupChatModal = ({ isOpen, onClose, onChatCreated }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-        <h2 className="text-xl font-semibold mb-4">Создание группового чата</h2>
-
+      <div className="shadow-xl rounded-2xl px-7 py-6 w-[440px] max-h-[90vh] flex flex-col relative border border-[#400d0d]" style={{backgroundImage:'linear-gradient(135deg,#400d0d 0%,#e07a5f 100%)',backgroundColor:'#f5e6d6',color:'#f5e6d6'}}>
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 p-1 rounded-full hover:bg-[#F5F5DC] transition-colors"
+          aria-label="Закрыть"
+          style={{background:'none',border:'none'}}
+        >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 6L18 18" stroke="#F5F5DC" strokeWidth="2.5" strokeLinecap="round"/>
+            <path d="M18 6L6 18" stroke="#F5F5DC" strokeWidth="2.5" strokeLinecap="round"/>
+          </svg>
+        </button>
+        <h2 className="text-lg font-semibold mb-3 text-center" style={{color:'#f5e6d6'}}>Создание группового чата</h2>
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          <div className="text-center text-sm mb-4" style={{color:'#B22222',background:'#FFF8F0',border:'1px solid #B22222',borderRadius:'10px',padding:'8px'}}>
             {error}
           </div>
         )}
-
         <div className="mb-4">
-          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="chatName">
+          <label className="block text-sm font-medium mb-1" style={{color:'#F5F5DC'}} htmlFor="chatName">
             Название чата*
           </label>
           <input
@@ -128,39 +137,38 @@ const CreateGroupChatModal = ({ isOpen, onClose, onChatCreated }) => {
             id="chatName"
             value={chatName}
             onChange={(e) => setChatName(e.target.value)}
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            className="w-full px-3 py-2 border border-[#B22222] rounded-lg bg-[#FFF8F0] text-[#B22222]"
             placeholder="Введите название чата"
             disabled={loading}
           />
         </div>
-
         <div className="mb-4">
-          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="chatDescription">
+          <label className="block text-sm font-medium mb-1" style={{color:'#F5F5DC'}} htmlFor="chatDescription">
             Описание чата
           </label>
           <textarea
             id="chatDescription"
             value={chatDescription}
             onChange={(e) => setChatDescription(e.target.value)}
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            className="w-full px-3 py-2 border border-[#B22222] rounded-lg bg-[#FFF8F0] text-[#B22222]"
             placeholder="Введите описание чата (необязательно)"
             rows="3"
             disabled={loading}
           />
         </div>
-
         <div className="mb-4">
-          <label className="block text-gray-700 text-sm font-bold mb-2">
+          <label className="block text-sm font-medium mb-1" style={{color:'#F5F5DC'}}>
             Участники*
           </label>
           <div className="flex flex-wrap gap-2 mb-2">
             {selectedParticipants.map(participant => (
-              <div key={participant.id} className="bg-blue-100 flex items-center rounded-full px-3 py-1">
-                <span className="text-sm text-blue-800">{participant.username}</span>
+              <div key={participant.id} className="flex items-center rounded-full px-3 py-1 border" style={{background:'#F5F5DC',border:'2px solid #B22222'}}>
+                <span className="text-sm" style={{color:'#B22222'}}>{participant.username}</span>
                 <button
                   onClick={() => removeParticipant(participant.id)}
-                  className="ml-2 text-blue-600 hover:text-blue-800"
+                  className="ml-2 text-[#B22222] hover:text-[#8B1A1A] text-lg"
                   disabled={loading}
+                  style={{background:'none',border:'none'}}
                 >
                   ✕
                 </button>
@@ -170,18 +178,19 @@ const CreateGroupChatModal = ({ isOpen, onClose, onChatCreated }) => {
           <button
             type="button"
             onClick={() => setShowUserSearch(true)}
-            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full"
+            className="px-5 py-2 rounded-lg font-semibold transition-colors w-full"
+            style={{backgroundColor:'#B22222',color:'#F5F5DC',border:'none'}}
             disabled={loading}
           >
             Добавить участников
           </button>
         </div>
-
-        <div className="flex justify-end gap-2 mt-6">
+        <div className="flex justify-center gap-2 mt-6">
           <button
             type="button"
             onClick={onClose}
-            className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            className="px-5 py-2 rounded-lg font-semibold transition-colors"
+            style={{backgroundColor:'#F5F5DC',color:'#B22222',border:'1px solid #B22222'}}
             disabled={loading}
           >
             Отмена
@@ -189,24 +198,24 @@ const CreateGroupChatModal = ({ isOpen, onClose, onChatCreated }) => {
           <button
             type="button"
             onClick={handleCreateChat}
-            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            className="px-5 py-2 rounded-lg font-semibold transition-colors"
+            style={{backgroundColor:'#B22222',color:'#F5F5DC',border:'none'}}
             disabled={loading}
           >
             {loading ? "Создание..." : "Создать чат"}
           </button>
         </div>
+        {showUserSearch && (
+          <UserSearchModal
+            isOpen={showUserSearch}
+            onClose={() => setShowUserSearch(false)}
+            onUserSelect={handleAddParticipants}
+            mode="multiple"
+            title="Добавление участников чата"
+            initialSelectedUsers={selectedParticipants}
+          />
+        )}
       </div>
-
-      {showUserSearch && (
-        <UserSearchModal
-          isOpen={showUserSearch}
-          onClose={() => setShowUserSearch(false)}
-          onUserSelect={handleAddParticipants}
-          mode="multiple"
-          title="Добавление участников чата"
-          initialSelectedUsers={selectedParticipants}
-        />
-      )}
     </div>
   );
 };

@@ -315,12 +315,13 @@ const FriendsManager = ({ onStartChat }) => {
   };
 
   return (
-    <div className="w-full h-full p-4 sm:p-6">
+    <div className="w-full h-full p-4 sm:p-6" style={{ backgroundColor: '#F5F5DC' }}>
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
-        <h1 className="text-2xl font-bold">Управление друзьями</h1>
+        <h1 className="text-2xl font-bold" style={{ color: '#B22222', letterSpacing: '1px' }}>Друзья Brickwall</h1>
         <button
           onClick={() => setShowSearchModal(true)}
-          className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
+          className="px-4 py-2 rounded-lg flex items-center justify-center gap-2 w-full sm:w-auto font-bold"
+          style={{ backgroundColor: '#B22222', color: '#F5F5DC', border: '1px solid #B22222' }}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -331,33 +332,33 @@ const FriendsManager = ({ onStartChat }) => {
 
       {/* Ошибки */}
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div style={{ backgroundColor: '#FFDAB9', border: '1px solid #B22222', color: '#B22222' }} className="px-4 py-3 rounded mb-4">
           {error}
         </div>
       )}
 
       {/* Карточки-статистика вместо табов */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <button
           onClick={() => setActiveTab('friends')}
-          className={`p-4 rounded-lg border-2 transition-all duration-200 ${
-            activeTab === 'friends'
-              ? 'border-blue-500 bg-blue-50 shadow-md'
-              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
-          }`}
+          className="p-2 rounded-lg border-2 transition-all duration-200 font-bold"
+          style={{
+            backgroundColor: activeTab === 'friends' ? '#FFDAB9' : '#F5F5DC',
+            borderColor: '#B22222',
+            color: '#B22222',
+            boxShadow: activeTab === 'friends' ? '0 2px 8px rgba(178,34,34,0.08)' : 'none',
+            minWidth: 0
+          }}
         >
           <div className="flex items-center justify-between">
             <div className="text-left">
-              <div className={`text-2xl font-bold ${activeTab === 'friends' ? 'text-blue-600' : 'text-gray-900'}`}>
-                {friends.length}
-              </div>
-              <div className={`text-sm ${activeTab === 'friends' ? 'text-blue-600' : 'text-gray-600'}`}>
-                Друзья
-              </div>
+              <div className="text-xl font-bold" style={{ color: '#B22222' }}>{friends.length}</div>
+              <div className="text-xs" style={{ color: '#B22222' }}>Друзья</div>
             </div>
-            <div className={`p-2 rounded-full ${activeTab === 'friends' ? 'bg-blue-100' : 'bg-gray-100'}`}>
-              <svg className={`w-6 h-6 ${activeTab === 'friends' ? 'text-blue-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            <div className="p-1 rounded-full bg-white border border-[#B22222]">
+              <svg className="w-5 h-5" fill="none" stroke="#B22222" viewBox="0 0 24 24">
+                <circle cx="12" cy="8" r="4" strokeWidth="2" />
+                <path d="M4 20c0-4 16-4 16 0" strokeWidth="2" />
               </svg>
             </div>
           </div>
@@ -365,27 +366,26 @@ const FriendsManager = ({ onStartChat }) => {
 
         <button
           onClick={() => setActiveTab('incoming')}
-          className={`p-4 rounded-lg border-2 transition-all duration-200 ${
-            activeTab === 'incoming'
-              ? 'border-green-500 bg-green-50 shadow-md'
-              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
-          }`}
+          className="p-2 rounded-lg border-2 transition-all duration-200 font-bold"
+          style={{
+            backgroundColor: activeTab === 'incoming' ? '#FFDAB9' : '#F5F5DC',
+            borderColor: '#B22222',
+            color: '#B22222',
+            boxShadow: activeTab === 'incoming' ? '0 2px 8px rgba(178,34,34,0.08)' : 'none',
+            minWidth: 0
+          }}
         >
           <div className="flex items-center justify-between">
             <div className="text-left">
-              <div className={`text-2xl font-bold ${activeTab === 'incoming' ? 'text-green-600' : 'text-gray-900'}`}>
-                {incomingRequests.length}
-              </div>
-              <div className={`text-sm ${activeTab === 'incoming' ? 'text-green-600' : 'text-gray-600'}`}>
-                Входящие
-              </div>
+              <div className="text-xl font-bold" style={{ color: '#B22222' }}>{incomingRequests.length}</div>
+              <div className="text-xs" style={{ color: '#B22222' }}>Входящие</div>
             </div>
-            <div className={`p-2 rounded-full ${activeTab === 'incoming' ? 'bg-green-100' : 'bg-gray-100'} relative`}>
-              <svg className={`w-6 h-6 ${activeTab === 'incoming' ? 'text-green-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            <div className="p-1 rounded-full bg-white border border-[#B22222] relative">
+              <svg className="w-5 h-5" fill="none" stroke="#B22222" viewBox="0 0 24 24">
+                <path d="M12 4v12m0 0l-4-4m4 4l4-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               {incomingRequests.length > 0 && (
-                <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
                   {incomingRequests.length}
                 </div>
               )}
@@ -395,24 +395,23 @@ const FriendsManager = ({ onStartChat }) => {
 
         <button
           onClick={() => setActiveTab('outgoing')}
-          className={`p-4 rounded-lg border-2 transition-all duration-200 ${
-            activeTab === 'outgoing'
-              ? 'border-yellow-500 bg-yellow-50 shadow-md'
-              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
-          }`}
+          className="p-2 rounded-lg border-2 transition-all duration-200 font-bold"
+          style={{
+            backgroundColor: activeTab === 'outgoing' ? '#FFDAB9' : '#F5F5DC',
+            borderColor: '#B22222',
+            color: '#B22222',
+            boxShadow: activeTab === 'outgoing' ? '0 2px 8px rgba(178,34,34,0.08)' : 'none',
+            minWidth: 0
+          }}
         >
           <div className="flex items-center justify-between">
             <div className="text-left">
-              <div className={`text-2xl font-bold ${activeTab === 'outgoing' ? 'text-yellow-600' : 'text-gray-900'}`}>
-                {outgoingRequests.length}
-              </div>
-              <div className={`text-sm ${activeTab === 'outgoing' ? 'text-yellow-600' : 'text-gray-600'}`}>
-                Исходящие
-              </div>
+              <div className="text-xl font-bold" style={{ color: '#B22222' }}>{outgoingRequests.length}</div>
+              <div className="text-xs" style={{ color: '#B22222' }}>Исходящие</div>
             </div>
-            <div className={`p-2 rounded-full ${activeTab === 'outgoing' ? 'bg-yellow-100' : 'bg-gray-100'}`}>
-              <svg className={`w-6 h-6 ${activeTab === 'outgoing' ? 'text-yellow-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            <div className="p-1 rounded-full bg-white border border-[#B22222]">
+              <svg className="w-5 h-5" fill="none" stroke="#B22222" viewBox="0 0 24 24">
+                <path d="M12 20V8m0 0l-4 4m4-4l4 4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
           </div>
@@ -435,7 +434,8 @@ const FriendsManager = ({ onStartChat }) => {
                   <div className="text-gray-500 mb-4">У вас пока нет друзей</div>
                   <button
                     onClick={() => setShowSearchModal(true)}
-                    className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                    className="px-6 py-2 rounded-lg font-bold"
+                    style={{ backgroundColor: '#B22222', color: '#F5F5DC', border: '1px solid #B22222' }}
                   >
                     Найти друзей
                   </button>
@@ -446,13 +446,15 @@ const FriendsManager = ({ onStartChat }) => {
                     <>
                       <button
                         onClick={() => handleStartChat(friend)}
-                        className="bg-blue-500 text-white px-3 sm:px-4 py-2 rounded hover:bg-blue-600 transition-colors text-sm sm:text-base whitespace-nowrap"
+                        className="px-3 sm:px-4 py-2 rounded font-bold"
+                        style={{ backgroundColor: '#B22222', color: '#F5F5DC', border: '1px solid #B22222' }}
                       >
                         Написать
                       </button>
                       <button
                         onClick={() => handleRemoveFriend(friend.id)}
-                        className="bg-red-500 text-white px-3 sm:px-4 py-2 rounded hover:bg-red-600 transition-colors text-sm sm:text-base whitespace-nowrap"
+                        className="px-3 sm:px-4 py-2 rounded font-bold"
+                        style={{ backgroundColor: '#FFDAB9', color: '#B22222', border: '1px solid #B22222' }}
                       >
                         Удалить
                       </button>
@@ -476,13 +478,15 @@ const FriendsManager = ({ onStartChat }) => {
                     <>
                       <button
                         onClick={() => handleAcceptFriendRequest(request)}
-                        className="bg-green-500 text-white px-3 sm:px-4 py-2 rounded hover:bg-green-600 transition-colors text-sm sm:text-base whitespace-nowrap"
+                        className="px-3 sm:px-4 py-2 rounded font-bold"
+                        style={{ backgroundColor: '#228B22', color: '#F5F5DC', border: '1px solid #228B22' }}
                       >
                         Принять
                       </button>
                       <button
                         onClick={() => handleRejectFriendRequest(request)}
-                        className="bg-red-500 text-white px-3 sm:px-4 py-2 rounded hover:bg-red-600 transition-colors text-sm sm:text-base whitespace-nowrap"
+                        className="px-3 sm:px-4 py-2 rounded font-bold"
+                        style={{ backgroundColor: '#FFDAB9', color: '#B22222', border: '1px solid #B22222' }}
                       >
                         Отклонить
                       </button>
@@ -503,7 +507,7 @@ const FriendsManager = ({ onStartChat }) => {
               ) : (
                 outgoingRequests.map(request =>
                   renderUserCard(request, (
-                    <div className="text-yellow-600 font-medium bg-yellow-50 px-3 py-2 rounded text-sm sm:text-base whitespace-nowrap">
+                    <div className="font-bold px-3 py-2 rounded text-sm sm:text-base whitespace-nowrap" style={{ backgroundColor: '#FFD700', color: '#B22222', border: '1px solid #FFD700' }}>
                       Ожидает ответа
                     </div>
                   ))

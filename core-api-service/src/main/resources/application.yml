@@ -34,15 +34,13 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        # Оптимизации для решения N+1 проблемы
         default_batch_fetch_size: 16
         jdbc.batch_size: 20
         order_inserts: true
         order_updates: true
         jdbc.batch_versioned_data: true
-        # Статистика отключена (ранее была true). Включайте временно через профиль или вручную при необходимости.
+        # Статистика отключена (ранее была true).
         generate_statistics: false
-        # Отключаем кеширование второго уровня пока что
         cache.use_second_level_cache: false
         cache.use_query_cache: false
 
@@ -77,8 +75,6 @@ logging:
     org.springframework.security: INFO
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
-    # Был DEBUG, понижен до WARN чтобы скрыть Session Metrics
     org.hibernate.stat: WARN
-    # Подавляем подробный вывод конфигурации Kafka (ConsumerConfig печатает при INFO)
     org.apache.kafka: WARN
     org.apache.kafka.clients.consumer.ConsumerConfig: ERROR

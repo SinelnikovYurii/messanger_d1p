@@ -34,7 +34,7 @@ public class MessageKafkaListener {
     @Transactional
     public void handleChatMessage(ConsumerRecord<String, String> record) {
         try {
-            log.info("📨 [KAFKA] Received message from topic 'chat-messages': key={}, value={}",
+            log.info("[KAFKA] Received message from topic 'chat-messages': key={}, value={}",
                     record.key(), record.value());
 
             // Парсим сообщение из JSON
@@ -45,19 +45,19 @@ public class MessageKafkaListener {
 
             // ИСПРАВЛЕНИЕ: Игнорируем события MESSAGE_READ - они обрабатываются в MessageService
             if ("MESSAGE_READ".equals(eventType)) {
-                log.info("📖 [KAFKA] Received MESSAGE_READ event - skipping (handled by MessageService)");
+                log.info("[KAFKA] Received MESSAGE_READ event - skipping (handled by MessageService)");
                 return;
             }
 
             // ИСПРАВЛЕНИЕ: Игнорируем события MESSAGE_UPDATE
             if ("MESSAGE_UPDATE".equals(eventType)) {
-                log.info("✏️ [KAFKA] Received MESSAGE_UPDATE event - skipping (already processed)");
+                log.info("[KAFKA] Received MESSAGE_UPDATE event - skipping (already processed)");
                 return;
             }
 
             // ИСПРАВЛЕНИЕ: Игнорируем события CHAT_MESSAGE - это уведомление о сообщении, которое УЖЕ сохранено в БД
             if ("CHAT_MESSAGE".equals(eventType)) {
-                log.info("💡 [KAFKA] Received CHAT_MESSAGE notification - message already saved in DB, skipping");
+                log.info("[KAFKA] Received CHAT_MESSAGE notification - message already saved in DB, skipping");
                 return;
             }
 
@@ -67,7 +67,7 @@ public class MessageKafkaListener {
             String content = (String) messageData.get("content");
             String messageType = (String) messageData.get("messageType");
 
-            log.info("💾 [DB] Saving message to database - senderId: {}, chatId: {}, content: '{}'",
+            log.info("[DB] Saving message to database - senderId: {}, chatId: {}, content: '{}'",
                     senderId, chatId, content);
 
             // Проверяем существование чата и пользователя
@@ -87,13 +87,13 @@ public class MessageKafkaListener {
 
             Message savedMessage = messageRepository.save(message);
 
-            log.info("✅ [DB] Message saved successfully with ID: {}", savedMessage.getId());
+            log.info("[DB] Message saved successfully with ID: {}", savedMessage.getId());
 
             // ИСПРАВЛЕНИЕ: Отправляем уведомление в Kafka с реальным ID сообщения
             notifyAboutNewMessage(savedMessage);
 
         } catch (Exception e) {
-            log.error("❌ [KAFKA] Error processing chat message: {}", e.getMessage(), e);
+            log.error("[KAFKA] Error processing chat message: {}", e.getMessage(), e);
             // В реальном приложении здесь можно добавить retry logic или dead letter queue
         }
     }
@@ -122,7 +122,7 @@ public class MessageKafkaListener {
             notification.put("thumbnailUrl", message.getThumbnailUrl());
         }
 
-        log.info("📤 [KAFKA] Sending CHAT_MESSAGE notification with ID: {} to Kafka", message.getId());
+        log.info("[KAFKA] Sending CHAT_MESSAGE notification with ID: {} to Kafka", message.getId());
         kafkaTemplate.send("chat-messages", message.getChat().getId().toString(), notification);
     }
 }

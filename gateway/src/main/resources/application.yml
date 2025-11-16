@@ -35,7 +35,7 @@ spring:
           filters:
             - RewritePath=/auth/(?<path>.*), /$\{path}
 
-        # НОВОЕ: Публичный доступ к аватаркам без JWT
+        # Публичный доступ к аватаркам без JWT
         - id: avatars-public
           uri: http://localhost:8082
           predicates:

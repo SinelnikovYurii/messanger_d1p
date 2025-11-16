@@ -1,0 +1,14 @@
+.user-search-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #e07a5f #fff4e6;
+}
+
+.user-search-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  background: #fff4e6;
+}
+.user-search-scrollbar::-webkit-scrollbar-thumb {
+  background: #e07a5f;
+  border-radius: 8px;
+}
+

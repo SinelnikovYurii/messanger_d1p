@@ -78,7 +78,7 @@ const FileUpload = forwardRef(({ chatId, onFileUploaded }, ref) => {
         if (file.type.includes('word')) return '📝';
         if (file.type.includes('excel') || file.type.includes('sheet')) return '📊';
         if (file.type.includes('zip') || file.type.includes('rar')) return '📦';
-        return '📎';
+        return '';
     };
 
     return (
@@ -105,9 +105,9 @@ const FileUpload = forwardRef(({ chatId, onFileUploaded }, ref) => {
 
             {/* Модальное окно предпросмотра */}
             {showPreview && selectedFile && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
-                        <h3 className="text-lg font-semibold mb-4">Отправить файл</h3>
+                <div className="fixed inset-0 flex items-center justify-center z-50" style={{background: 'rgba(255,218,185,0.7)'}}> {/* #FFDAB9 с прозрачностью */}
+                    <div className="rounded-lg p-6 max-w-lg w-full mx-4" style={{background: '#FFDAB9', color: '#520808', boxShadow: '0 4px 32px rgba(82,8,8,0.12)'}}>
+                        <h3 className="text-lg font-semibold mb-4" style={{color: '#520808'}}>Отправить файл</h3>
 
                         {/* Предпросмотр файла */}
                         <div className="mb-4">
@@ -116,13 +116,14 @@ const FileUpload = forwardRef(({ chatId, onFileUploaded }, ref) => {
                                     src={URL.createObjectURL(selectedFile)}
                                     alt="Preview"
                                     className="max-w-full max-h-64 mx-auto rounded"
+                                    style={{border: '2px solid #B22222'}}
                                 />
                             ) : (
-                                <div className="flex items-center justify-center p-8 bg-gray-100 rounded">
+                                <div className="flex items-center justify-center p-8 rounded" style={{background: '#F5DEB3'}}>
                                     <div className="text-center">
-                                        <div className="text-5xl mb-2">{getFileIcon(selectedFile)}</div>
-                                        <div className="text-sm font-medium">{selectedFile.name}</div>
-                                        <div className="text-xs text-gray-500">{formatFileSize(selectedFile.size)}</div>
+                                        <div className="text-5xl mb-2" style={{color: '#520808'}}>{getFileIcon(selectedFile)}</div>
+                                        <div className="text-sm font-medium" style={{color: '#520808'}}>{selectedFile.name}</div>
+                                        <div className="text-xs" style={{color: '#B22222'}}>{formatFileSize(selectedFile.size)}</div>
                                     </div>
                                 </div>
                             )}
@@ -130,15 +131,14 @@ const FileUpload = forwardRef(({ chatId, onFileUploaded }, ref) => {
 
                         {/* Подпись к файлу */}
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Подпись (необязательно)
-                            </label>
+                            <label className="block text-sm font-medium mb-2" style={{color: '#520808'}}>Подпись (необязательно)</label>
                             <input
                                 type="text"
                                 value={caption}
                                 onChange={(e) => setCaption(e.target.value)}
                                 placeholder="Добавьте подпись к файлу..."
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 rounded-lg focus:outline-none focus:ring-2"
+                                style={{background: '#F5DEB3', color: '#520808', border: '2px solid #B22222'}}
                                 disabled={uploading}
                             />
                         </div>
@@ -146,13 +146,13 @@ const FileUpload = forwardRef(({ chatId, onFileUploaded }, ref) => {
                         {/* Прогресс загрузки */}
                         {uploading && (
                             <div className="mb-4">
-                                <div className="bg-gray-200 rounded-full h-2">
+                                <div className="rounded-full h-2" style={{background: '#F5DEB3'}}>
                                     <div
-                                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                        style={{ width: `${uploadProgress}%` }}
+                                        className="h-2 rounded-full transition-all duration-300"
+                                        style={{width: `${uploadProgress}%`, background: '#B22222'}}
                                     />
                                 </div>
-                                <div className="text-sm text-gray-600 text-center mt-1">
+                                <div className="text-sm text-center mt-1" style={{color: '#B22222'}}>
                                     Загрузка... {uploadProgress}%
                                 </div>
                             </div>
@@ -163,14 +163,18 @@ const FileUpload = forwardRef(({ chatId, onFileUploaded }, ref) => {
                             <button
                                 onClick={handleCancel}
                                 disabled={uploading}
-                                className="px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50"
+                                className="px-4 py-2 rounded transition-colors"
+                                style={{background: '#F5DEB3', color: '#520808', border: '2px solid #B22222'}}
                             >
                                 Отмена
                             </button>
                             <button
                                 onClick={handleUpload}
                                 disabled={uploading}
-                                className="px-4 py-2 text-white bg-blue-500 rounded hover:bg-blue-600 disabled:opacity-50"
+                                className="px-4 py-2 rounded font-bold transition-colors"
+                                style={{background: '#B22222', color: '#fff', border: 'none'}}
+                                onMouseOver={e => e.target.style.background = '#520808'}
+                                onMouseOut={e => e.target.style.background = '#B22222'}
                             >
                                 {uploading ? 'Отправка...' : 'Отправить'}
                             </button>
@@ -199,11 +203,11 @@ export const useDragAndDrop = (onFileDrop) => {
         }
 
         dragCounter.current++;
-        console.log('🔵 DragEnter - counter:', dragCounter.current);
+        console.log('DragEnter - counter:', dragCounter.current);
 
         if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
             if (!isDragging) {
-                console.log('✅ Setting isDragging to TRUE');
+                console.log('Setting isDragging to TRUE');
                 setIsDragging(true);
             }
         }
@@ -213,12 +217,12 @@ export const useDragAndDrop = (onFileDrop) => {
         e.preventDefault();
         e.stopPropagation();
         dragCounter.current--;
-        console.log('🟡 DragLeave - counter:', dragCounter.current);
+        console.log('DragLeave - counter:', dragCounter.current);
 
         // Используем таймаут для сброса состояния, чтобы избежать мерцания
         if (dragCounter.current === 0) {
             dragTimeout.current = setTimeout(() => {
-                console.log('❌ Setting isDragging to FALSE (delayed)');
+                console.log('Setting isDragging to FALSE (delayed)');
                 setIsDragging(false);
             }, 50); // Небольшая задержка 50ms
         }
@@ -232,7 +236,7 @@ export const useDragAndDrop = (onFileDrop) => {
     const handleDrop = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        console.log('🔴 Drop - resetting state');
+        console.log('Drop - resetting state');
 
         // Отменяем таймаут
         if (dragTimeout.current) {
@@ -245,7 +249,7 @@ export const useDragAndDrop = (onFileDrop) => {
 
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
-            console.log('📁 File dropped:', files[0].name);
+            console.log('File dropped:', files[0].name);
             onFileDrop(files[0]);
         }
     };

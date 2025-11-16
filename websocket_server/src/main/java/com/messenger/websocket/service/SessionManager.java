@@ -3,6 +3,7 @@ package websocket.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -236,28 +237,28 @@ public class SessionManager {
 
         List<io.netty.channel.Channel> channels = sessions.values().stream()
             .map(session -> {
-                log.debug("🔗 [SESSION] Checking session: {} (user: {}, userId: {})",
+                log.debug("[SESSION] Checking session: {} (user: {}, userId: {})",
                     session.getSessionId(), session.getUsername(), session.getUserId());
                 return session.getContext().channel();
             })
             .filter(channel -> {
                 boolean isActive = channel != null && channel.isActive();
                 if (!isActive) {
-                    log.debug("⚠️ [SESSION] Skipping inactive channel: {}",
+                    log.debug("[SESSION] Skipping inactive channel: {}",
                         channel != null ? channel.id().asShortText() : "null");
                 } else {
-                    log.debug("✅ [SESSION] Found active channel: {}", channel.id().asShortText());
+                    log.debug("[SESSION] Found active channel: {}", channel.id().asShortText());
                 }
                 return isActive;
             })
             .collect(Collectors.toList());
 
-        log.info("📡 [SESSION] Fallback: Found {} active channels from {} total sessions",
+        log.info("[SESSION] Fallback: Found {} active channels from {} total sessions",
             channels.size(), sessions.size());
 
         // Логируем все активные каналы
         for (int i = 0; i < channels.size(); i++) {
-            log.info("📄 [SESSION] Fallback channel {}: {}", i + 1, channels.get(i).id().asShortText());
+            log.info("[SESSION] Fallback channel {}: {}", i + 1, channels.get(i).id().asShortText());
         }
 
         return channels;
@@ -301,7 +302,7 @@ public class SessionManager {
      */
     private void broadcastToChatInternal(Long chatId, Map<String, Object> messageData) {
         try {
-            log.info("🔊 [BROADCAST] Starting broadcast for chat {} with data: {}", chatId, messageData);
+            log.info("[BROADCAST] Starting broadcast for chat {} with data: {}", chatId, messageData);
 
             // Создаем WebSocket сообщение
             websocket.model.WebSocketMessage wsMessage = new websocket.model.WebSocketMessage();
@@ -369,9 +370,9 @@ public class SessionManager {
                 if (messageData.containsKey("senderId")) {
                     Long senderId = ((Number) messageData.get("senderId")).longValue();
                     wsMessage.setSenderId(senderId);
-                    log.info("📖 [BROADCAST] MESSAGE_READ: Added senderId={}", senderId);
+                    log.info("[BROADCAST] MESSAGE_READ: Added senderId={}", senderId);
                 }
-                log.info("📖 [BROADCAST] MESSAGE_READ: messageId={}, readerId={}, readerUsername={}, senderId={}",
+                log.info("[BROADCAST] MESSAGE_READ: messageId={}, readerId={}, readerUsername={}, senderId={}",
                     messageData.get("messageId"), messageData.get("readerId"), messageData.get("readerUsername"), messageData.get("senderId"));
             }
 
@@ -398,7 +399,7 @@ public class SessionManager {
                 wsMessage.setThumbnailUrl((String) messageData.get("thumbnailUrl"));
             }
 
-            log.info("📄 [BROADCAST] Created WebSocket message: type={}, messageType={}, chatId={}, senderId={}, content='{}', fileUrl={}",
+            log.info("[BROADCAST] Created WebSocket message: type={}, messageType={}, chatId={}, senderId={}, content='{}', fileUrl={}",
                     wsMessage.getType(), wsMessage.getMessageType(), wsMessage.getChatId(), wsMessage.getUserId(),
                     wsMessage.getContent(), wsMessage.getFileUrl());
 
@@ -410,7 +411,7 @@ public class SessionManager {
                 mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
                 String json = mapper.writeValueAsString(wsMessage);
 
-                log.info("📡 [BROADCAST] Broadcasting to {} channels for chat {}: {}", channels.size(), chatId, json);
+                log.info("[BROADCAST] Broadcasting to {} channels for chat {}: {}", channels.size(), chatId, json);
 
                 int successCount = 0;
                 int failCount = 0;
@@ -422,7 +423,7 @@ public class SessionManager {
                             log.debug("[BROADCAST] Sent message to channel: {}", channel.id().asShortText());
                             successCount++;
                         } else {
-                            log.debug("⚠[BROADCAST] Skipped inactive channel: {}", channel.id().asShortText());
+                            log.debug("[BROADCAST] Skipped inactive channel: {}", channel.id().asShortText());
                         }
                     } catch (Exception e) {
                         log.error("[BROADCAST] Failed to send message to channel: {}", channel.id().asShortText(), e);
@@ -433,7 +434,7 @@ public class SessionManager {
                 log.info("[BROADCAST] Broadcast completed for chat {}: {} successful, {} failed",
                         chatId, successCount, failCount);
             } else {
-                log.warn("⚠[BROADCAST] No active channels found for chat {}", chatId);
+                log.warn("[BROADCAST] No active channels found for chat {}", chatId);
             }
 
         } catch (Exception e) {
@@ -477,6 +478,7 @@ public class SessionManager {
     }
 
     // Внутренний класс для хранения информации о сессии
+    @Getter
     private static class UserSession {
         private final String sessionId;
         private final ChannelHandlerContext context;
@@ -490,9 +492,5 @@ public class SessionManager {
             this.userId = userId;
         }
 
-        public String getSessionId() { return sessionId; }
-        public ChannelHandlerContext getContext() { return context; }
-        public String getUsername() { return username; }
-        public Long getUserId() { return userId; }
     }
 }

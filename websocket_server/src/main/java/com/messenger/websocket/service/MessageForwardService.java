@@ -104,17 +104,17 @@ public class MessageForwardService {
             if (messageTypeStr != null) {
                 if ("MESSAGE_READ".equals(messageTypeStr)) {
                     messageType = MessageType.MESSAGE_READ;
-                    log.info("📖 [KAFKA] Processing MESSAGE_READ event");
+                    log.info("[KAFKA] Processing MESSAGE_READ event");
                 } else if ("MESSAGE_UPDATE".equals(messageTypeStr)) {
                     messageType = MessageType.CHAT_MESSAGE;
-                    log.info("✏️ [KAFKA] Processing MESSAGE_UPDATE event");
+                    log.info("[KAFKA] Processing MESSAGE_UPDATE event");
                 } else if ("NEW_MESSAGE".equals(messageTypeStr)) {
                     // Откат: не игнорируем, пересылаем как CHAT_MESSAGE
                     messageType = MessageType.CHAT_MESSAGE;
-                    log.info("💬 [KAFKA] Processing NEW_MESSAGE event");
+                    log.info("[KAFKA] Processing NEW_MESSAGE event");
                 } else if ("CHAT_MESSAGE".equals(messageTypeStr)) {
                     messageType = MessageType.CHAT_MESSAGE;
-                    log.info("💬 [KAFKA] Processing CHAT_MESSAGE event (likely persisted with id)");
+                    log.info("[KAFKA] Processing CHAT_MESSAGE event (likely persisted with id)");
                 }
             }
 
@@ -145,7 +145,7 @@ public class MessageForwardService {
                     String readerUsername = (String) messageData.get("readerUsername");
                     wsMessage.setReaderUsername(readerUsername);
                 }
-                log.info("📖 [KAFKA] MESSAGE_READ details: messageId={}, readerId={}, readerUsername={}, senderId={}",
+                log.info("[KAFKA] MESSAGE_READ details: messageId={}, readerId={}, readerUsername={}, senderId={}",
                     messageData.get("messageId"), messageData.get("readerId"),
                     messageData.get("readerUsername"), messageData.get("senderId"));
             }
@@ -179,15 +179,15 @@ public class MessageForwardService {
             // ИСПРАВЛЕНО: Проверяем оба поля - id и messageId
             if (messageData.containsKey("id")) {
                 wsMessage.setId(((Number) messageData.get("id")).longValue());
-                log.info("💬 [KAFKA] Message ID from 'id' field: {}", messageData.get("id"));
+                log.info("[KAFKA] Message ID from 'id' field: {}", messageData.get("id"));
             } else if (messageData.containsKey("messageId")) {
                 wsMessage.setId(((Number) messageData.get("messageId")).longValue());
-                log.info("💬 [KAFKA] Message ID from 'messageId' field: {}", messageData.get("messageId"));
+                log.info("[KAFKA] Message ID from 'messageId' field: {}", messageData.get("messageId"));
             } else {
-                log.warn("⚠️ [KAFKA] No ID found in message data! Keys: {}", messageData.keySet());
+                log.warn("⚠[KAFKA] No ID found in message data! Keys: {}", messageData.keySet());
             }
 
-            log.info("💬 [KAFKA] Processing message for chat {} from user {} (ID: {}): '{}' [Type: {}, HasFile: {}, MessageID: {}]",
+            log.info("[KAFKA] Processing message for chat {} from user {} (ID: {}): '{}' [Type: {}, HasFile: {}, MessageID: {}]",
                 chatId, wsMessage.getUsername(), wsMessage.getUserId(), wsMessage.getContent(),
                 wsMessage.getMessageType(), wsMessage.getFileUrl() != null, wsMessage.getId());
 

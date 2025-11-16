@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import userService from '../services/userService';
 import chatService from '../services/chatService';
 import { getAvatarUrl } from '../utils/avatarUtils';
+import './UserSearchModal.css';
 
 const UserSearchModal = ({ isOpen, onClose, onUserSelect, mode = 'chat' }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -113,38 +114,40 @@ const UserSearchModal = ({ isOpen, onClose, onUserSelect, mode = 'chat' }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-96 overflow-hidden">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">
-            {getModalTitle()}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl"
-          >
-            ✕
-          </button>
-        </div>
-
+      <div className="shadow-xl rounded-2xl px-7 py-6 w-[440px] h-[520px] flex flex-col relative border border-[#400d0d]" style={{backgroundImage:'linear-gradient(135deg,#400d0d 0%,#e07a5f 100%)',backgroundColor:'#f5e6d6',color:'#f5e6d6'}}>
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 p-1 rounded-full hover:bg-[#F5F5DC] transition-colors"
+          aria-label="Закрыть"
+          style={{background:'none',border:'none'}}
+        >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 6L18 18" stroke="#F5F5DC" strokeWidth="2.5" strokeLinecap="round"/>
+            <path d="M18 6L6 18" stroke="#F5F5DC" strokeWidth="2.5" strokeLinecap="round"/>
+          </svg>
+        </button>
+        <h2 className="text-lg font-semibold mb-3 text-center" style={{color:'#f5e6d6'}}>
+          {getModalTitle()}
+        </h2>
         <input
           type="text"
-          placeholder="Введите имя пользователя..."
+          placeholder="Поиск пользователя..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500 mb-4"
+          className="w-full px-3 py-2 border border-[#B22222] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#B22222] mb-3 bg-[#FFF8F0] text-[#B22222] placeholder-[#B22222]"
           autoFocus
         />
-
         {mode === 'multiple' && selectedUsers.length > 0 && (
-          <div className="mb-4">
-            <div className="text-sm text-gray-600 mb-2">
+          <div className="mb-2">
+            <div className="text-xs mb-1" style={{color:'#8B1A1A'}}>
               Выбрано: {selectedUsers.length}
             </div>
-            <div className="flex flex-wrap gap-2 mb-2">
+            <div className="flex flex-wrap gap-1 mb-1">
               {selectedUsers.map(user => (
                 <span
                   key={user.id}
-                  className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm"
+                  className="px-2 py-1 rounded-full text-xs"
+                  style={{backgroundColor:'#B22222',color:'#F5F5DC'}}
                 >
                   {user.username}
                 </span>
@@ -152,126 +155,159 @@ const UserSearchModal = ({ isOpen, onClose, onUserSelect, mode = 'chat' }) => {
             </div>
             <button
               onClick={handleConfirmSelection}
-              className="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+              className="w-full px-3 py-1 rounded-lg text-xs transition-colors"
+              style={{backgroundColor:'#B22222',color:'#F5F5DC'}}
             >
-              Подтвердить выбор
+              Подтвердить
             </button>
           </div>
         )}
-
-        <div className="max-h-64 overflow-y-auto">
-          {loading && (
-            <div className="text-center py-4">
-              <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mb-2"></div>
-              <div className="text-gray-500">Поиск...</div>
-            </div>
+        <div className="flex-1 overflow-y-auto user-search-scrollbar" style={{color:'#f5e6d6'}}>
+          {searchResults.length === 0 && searchQuery.length > 2 && (
+            <div className="text-center py-6 text-sm" style={{color:'#B22222'}}>Пользователи не найдены</div>
           )}
-
-          {!loading && searchResults.length === 0 && searchQuery.length > 2 && (
-            <div className="text-center py-4 text-gray-500">
-              Пользователи не найдены
-            </div>
+          {searchResults.length === 0 && searchQuery.length <= 2 && searchQuery.length > 0 && (
+            <div className="text-center py-6 text-sm" style={{color:'#B22222'}}>Введите минимум 3 символа для поиска</div>
           )}
-
-          {!loading && searchQuery.length <= 2 && searchQuery.length > 0 && (
-            <div className="text-center py-4 text-gray-500">
-              Введите минимум 3 символа для поиска
-            </div>
-          )}
-
-          {searchResults.map(user => (
-            <div
-              key={user.id}
-              className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-md"
-            >
-              <div className="flex items-center">
-                <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center mr-3 relative">
-                  {user.profilePictureUrl ? (
-                    <img
-                      src={getAvatarUrl(user.profilePictureUrl)}
-                      alt={user.username}
-                      className="w-full h-full rounded-full object-cover"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.parentElement.innerHTML = `<span class="text-gray-600 font-semibold">${user.username.charAt(0).toUpperCase()}</span>`;
-                      }}
-                    />
-                  ) : (
-                    <span className="text-gray-600 font-semibold">
-                      {user.username.charAt(0).toUpperCase()}
-                    </span>
+          <ul className="space-y-2">
+            {searchResults.map(user => (
+              <li
+                key={user.id}
+                className="flex items-center justify-between p-2 rounded-xl shadow-sm border border-[#B22222]"
+                style={{minHeight:'56px',maxHeight:'56px',cursor:'pointer',backgroundColor:'#FFF8F0',transition:'background-color 0.2s, box-shadow 0.2s',color:'#f5e6d6'}}
+                onMouseEnter={e => {
+                  e.currentTarget.style.backgroundColor = '#dab78c';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(224, 122, 95, 0.3)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.backgroundColor = '#FFF8F0';
+                  e.currentTarget.style.boxShadow = '';
+                }}
+              >
+                <div className="flex items-center">
+                  <div className="w-9 h-9 bg-[#F5F5DC] rounded-full flex items-center justify-center mr-2 relative overflow-hidden border border-[#B22222]">
+                    {user.profilePictureUrl ? (
+                      <img
+                        src={getAvatarUrl(user.profilePictureUrl)}
+                        alt={user.username}
+                        className="w-full h-full rounded-full object-cover"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.parentElement.innerHTML = `<span style='color:#8B1A1A;font-weight:600'>${user.username.charAt(0).toUpperCase()}</span>`;
+                        }}
+                      />
+                    ) : (
+                      <span style={{color:'#8B1A1A',fontWeight:600}}>
+                        {user.username.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    {user.isOnline && (
+                      <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-[#FFF8F0]" style={{backgroundColor:'#0b5d0b'}}></div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-medium text-sm" style={{color:'#B22222'}}>{user.username}</div>
+                    {(user.firstName || user.lastName) && (
+                      <div className="text-xs" style={{color:'#8B1A1A'}}>
+                        {user.firstName} {user.lastName}
+                      </div>
+                    )}
+                    {user.friendshipStatus && (
+                      <div className={`text-[10px] px-2 py-0.5 rounded-full inline-block mt-1`} style={{backgroundColor:'#F5F5DC',color:'#B22222'}}>
+                        {getFriendshipStatusText(user.friendshipStatus)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  {(mode === 'single' || mode === 'friends') && (
+                    <>
+                      {user.canStartChat && mode === 'single' && (
+                        <button
+                          onClick={() => handleStartChat(user)}
+                          disabled={actionLoading[`chat_${user.id}`]}
+                          className="px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-200 shadow-sm"
+                          style={{
+                            backgroundColor: actionLoading[`chat_${user.id}`] ? '#B22222' : '#B22222',
+                            color: '#FFF8F0',
+                            border: 'none',
+                            boxShadow: '0 1px 4px #b2222222',
+                            cursor: actionLoading[`chat_${user.id}`] ? 'not-allowed' : 'pointer',
+                          }}
+                          onMouseEnter={e => {
+                            if (!actionLoading[`chat_${user.id}`]) e.currentTarget.style.backgroundColor = '#8B1A1A';
+                          }}
+                          onMouseLeave={e => {
+                            if (!actionLoading[`chat_${user.id}`]) e.currentTarget.style.backgroundColor = '#B22222';
+                          }}
+                        >
+                          {actionLoading[`chat_${user.id}`] ? '...' : 'Написать'}
+                        </button>
+                      )}
+                      {!user.friendshipStatus && (
+                        <button
+                          onClick={() => handleSendFriendRequest(user.id)}
+                          disabled={actionLoading[`friend_${user.id}`]}
+                          className="px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-200 shadow-sm"
+                          style={{
+                            backgroundColor: actionLoading[`friend_${user.id}`] ? '#228B22' : '#228B22',
+                            color: '#FFF8F0',
+                            border: 'none',
+                            boxShadow: '0 1px 4px #228b2222',
+                            cursor: actionLoading[`friend_${user.id}`] ? 'not-allowed' : 'pointer',
+                          }}
+                          onMouseEnter={e => {
+                            if (!actionLoading[`friend_${user.id}`]) e.currentTarget.style.backgroundColor = '#176d16';
+                          }}
+                          onMouseLeave={e => {
+                            if (!actionLoading[`friend_${user.id}`]) e.currentTarget.style.backgroundColor = '#228B22';
+                          }}
+                        >
+                          {actionLoading[`friend_${user.id}`] ? '...' : 'Добавить'}
+                        </button>
+                      )}
+                      {user.friendshipStatus === 'ACCEPTED' && mode === 'friends' && (
+                        <button
+                          onClick={() => handleStartChat(user)}
+                          disabled={actionLoading[`chat_${user.id}`]}
+                          className="px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-200 shadow-sm"
+                          style={{
+                            backgroundColor: actionLoading[`chat_${user.id}`] ? '#B22222' : '#B22222',
+                            color: '#FFF8F0',
+                            border: 'none',
+                            boxShadow: '0 1px 4px #b2222222',
+                            cursor: actionLoading[`chat_${user.id}`] ? 'not-allowed' : 'pointer',
+                          }}
+                          onMouseEnter={e => {
+                            if (!actionLoading[`chat_${user.id}`]) e.currentTarget.style.backgroundColor = '#8B1A1A';
+                          }}
+                          onMouseLeave={e => {
+                            if (!actionLoading[`chat_${user.id}`]) e.currentTarget.style.backgroundColor = '#B22222';
+                          }}
+                        >
+                          {actionLoading[`chat_${user.id}`] ? '...' : 'Написать'}
+                        </button>
+                      )}
+                    </>
                   )}
-                  {user.isOnline && (
-                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+                  {mode === 'multiple' && (
+                    <button
+                      onClick={() => handleUserSelect(user)}
+                      className="px-2 py-1 rounded text-xs transition-colors"
+                      style={selectedUsers.find(u => u.id === user.id)
+                        ? {backgroundColor:'#B22222',color:'#F5F5DC'}
+                        : {backgroundColor:'#F5F5DC',color:'#B22222',border:'1px solid #B22222'}}
+                    >
+                      {selectedUsers.find(u => u.id === user.id) ? '✓' : 'Выбрать'}
+                    </button>
                   )}
                 </div>
-                <div>
-                  <div className="font-medium">{user.username}</div>
-                  {(user.firstName || user.lastName) && (
-                    <div className="text-sm text-gray-500">
-                      {user.firstName} {user.lastName}
-                    </div>
-                  )}
-                  {user.friendshipStatus && (
-                    <div className={`text-xs px-2 py-1 rounded-full inline-block mt-1 ${getFriendshipStatusColor(user.friendshipStatus)}`}>
-                      {getFriendshipStatusText(user.friendshipStatus)}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                {(mode === 'single' || mode === 'friends') && (
-                  <>
-                    {user.canStartChat && mode === 'single' && (
-                      <button
-                        onClick={() => handleStartChat(user)}
-                        disabled={actionLoading[`chat_${user.id}`]}
-                        className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {actionLoading[`chat_${user.id}`] ? '...' : 'Написать'}
-                      </button>
-                    )}
-                    {!user.friendshipStatus && (
-                      <button
-                        onClick={() => handleSendFriendRequest(user.id)}
-                        disabled={actionLoading[`friend_${user.id}`]}
-                        className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {actionLoading[`friend_${user.id}`] ? '...' : 'Добавить в друзья'}
-                      </button>
-                    )}
-                    {user.friendshipStatus === 'ACCEPTED' && mode === 'friends' && (
-                      <button
-                        onClick={() => handleStartChat(user)}
-                        disabled={actionLoading[`chat_${user.id}`]}
-                        className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {actionLoading[`chat_${user.id}`] ? '...' : 'Написать'}
-                      </button>
-                    )}
-                  </>
-                )}
-
-                {mode === 'multiple' && (
-                  <button
-                    onClick={() => handleUserSelect(user)}
-                    className={`px-3 py-1 rounded text-sm ${
-                      selectedUsers.find(u => u.id === user.id)
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                  >
-                    {selectedUsers.find(u => u.id === user.id) ? 'Выбран' : 'Выбрать'}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+              </li>
+            ))}
+          </ul>
         </div>
-
         {searchQuery.length === 0 && (
-          <div className="text-center py-4 text-gray-400">
+          <div className="text-center py-4 text-sm" style={{color:'#f5e6d6'}}>
             Начните печатать для поиска пользователей
           </div>
         )}

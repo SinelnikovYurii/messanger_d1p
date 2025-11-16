@@ -2,6 +2,8 @@ package websocket.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -83,25 +85,13 @@ public class UserDataService {
         }
     }
 
-    /**
-     * DTO для данных пользователя
-     */
-    public static class UserData {
+    @Setter
+    @Getter
+    public class UserData {
         private Long id;
         private String username;
         private Boolean isOnline;
         private LocalDateTime lastSeen;
 
-        public Long getId() { return id; }
-        public void setId(Long id) { this.id = id; }
-
-        public String getUsername() { return username; }
-        public void setUsername(String username) { this.username = username; }
-
-        public Boolean getIsOnline() { return isOnline; }
-        public void setIsOnline(Boolean isOnline) { this.isOnline = isOnline; }
-
-        public LocalDateTime getLastSeen() { return lastSeen; }
-        public void setLastSeen(LocalDateTime lastSeen) { this.lastSeen = lastSeen; }
     }
 }

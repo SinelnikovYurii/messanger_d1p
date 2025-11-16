@@ -3,14 +3,14 @@
 
 class TokenCleaner {
     static clearAllTokens() {
-        console.log('🧹 TokenCleaner: Clearing all stored authentication data');
+        console.log('TokenCleaner: Clearing all stored authentication data');
 
         // Очищаем все связанные с авторизацией данные из localStorage
         const keysToRemove = ['token', 'user', 'authTimestamp', 'refreshToken'];
 
         keysToRemove.forEach(key => {
             if (localStorage.getItem(key)) {
-                console.log(`🗑️ Removing ${key} from localStorage`);
+                console.log(`Removing ${key} from localStorage`);
                 localStorage.removeItem(key);
             }
         });
@@ -18,12 +18,12 @@ class TokenCleaner {
         // Очищаем sessionStorage на всякий случай
         keysToRemove.forEach(key => {
             if (sessionStorage.getItem(key)) {
-                console.log(`🗑️ Removing ${key} from sessionStorage`);
+                console.log(`Removing ${key} from sessionStorage`);
                 sessionStorage.removeItem(key);
             }
         });
 
-        console.log('✅ TokenCleaner: All authentication data cleared');
+        console.log('TokenCleaner: All authentication data cleared');
 
         // Диспатчим событие об изменении авторизации
         window.dispatchEvent(new Event('authChange'));
@@ -36,7 +36,7 @@ class TokenCleaner {
 
         // Если не на странице логина, перенаправляем туда
         if (window.location.pathname !== '/login') {
-            console.log('🔄 Redirecting to login page');
+            console.log('Redirecting to login page');
             window.location.replace('/login');
         }
 
@@ -58,13 +58,13 @@ class TokenCleaner {
     static markTokenCleanupComplete() {
         const currentVersion = '2.0.0'; // Синхронизируем версию
         localStorage.setItem('tokenCleanupVersion', currentVersion);
-        console.log('✅ Token cleanup marked as complete for version:', currentVersion);
+        console.log('Token cleanup marked as complete for version:', currentVersion);
     }
 
     // Автоматическая очистка при необходимости
     static autoCleanupIfNeeded() {
         if (this.needsTokenCleanup()) {
-            console.log('🔄 Auto-cleanup needed, clearing old tokens');
+            console.log('Auto-cleanup needed, clearing old tokens');
             this.clearAllTokens();
             this.markTokenCleanupComplete();
             return true;
