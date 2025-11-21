@@ -24,8 +24,10 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.disable()) // Отключаем CORS в SecurityConfig, используем globalcors в application.yml
                 .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers("/auth/**", "/public/**", "/actuator/**").permitAll()
+                        .pathMatchers("/auth/**", "/public/**", "/actuator/**", "/health", "/").permitAll()
                         .pathMatchers("/ws/**").permitAll() // WebSocket соединения
+                        // ИСПРАВЛЕНИЕ: Публичный доступ к debug-эндпоинтам
+                        .pathMatchers("/debug/**").permitAll()
                         // ИСПРАВЛЕНИЕ: Публичный доступ к аватаркам без JWT
                         .pathMatchers("/avatars/**").permitAll()
                         .pathMatchers("/uploads/avatars/**").permitAll()

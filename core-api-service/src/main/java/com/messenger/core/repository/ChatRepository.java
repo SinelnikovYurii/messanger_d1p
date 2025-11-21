@@ -59,4 +59,8 @@ public interface ChatRepository extends JpaRepository<Chat, Long> {
            "LEFT JOIN FETCH c.participants " +
            "WHERE c.id IN :chatIds")
     List<Chat> findChatsByIdsWithParticipants(@Param("chatIds") List<Long> chatIds);
+
+    // Поиск чатов по названию для пользователя
+    @Query("SELECT c FROM Chat c JOIN c.participants p WHERE p.id = :userId AND LOWER(c.chatName) LIKE LOWER(CONCAT('%', :name, '%'))")
+    List<Chat> searchChatsByName(@Param("name") String name, @Param("userId") Long userId);
 }

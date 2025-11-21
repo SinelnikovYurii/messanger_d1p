@@ -186,9 +186,9 @@ public class FileStorageService {
      * Проверка разрешенного типа файла
      */
     private boolean isAllowedType(String contentType) {
-
-        return contentType != null && !contentType.trim().isEmpty();
-
+        if (allowedTypes == null || allowedTypes.isEmpty()) return false;
+        List<String> allowed = Arrays.asList(allowedTypes.split(","));
+        return allowed.contains(contentType);
     }
 
     /**
@@ -236,4 +236,3 @@ public class FileStorageService {
         public void setThumbnailUrl(String thumbnailUrl) { this.thumbnailUrl = thumbnailUrl; }
     }
 }
-

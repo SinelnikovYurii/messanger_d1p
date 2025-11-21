@@ -42,13 +42,9 @@ public class AuthController {
     }
 
     @GetMapping("/user-info")
-    public ResponseEntity<?> getUserInfo(@RequestHeader("Authorization") String authHeader) {
-        try {
-            String token = authHeader.substring(7);
-            String username = jwtUtil.extractUsername(token);
-
-
-            Optional<User> userOptional = userRepository.findByUsername(username);
+    public ResponseEntity<?> getUserInfo(Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() instanceof UserDetails userDetails) {
+            Optional<User> userOptional = userRepository.findByUsername(userDetails.getUsername());
             if (userOptional.isPresent()) {
                 User user = userOptional.get();
                 return ResponseEntity.ok(Map.of(
@@ -59,10 +55,9 @@ public class AuthController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(Collections.singletonMap("error", "Пользователь не найден"));
             }
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Collections.singletonMap("error", "Неверный токен"));
         }
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Collections.singletonMap("error", "Неверный токен"));
     }
 
     @GetMapping("/me")
@@ -80,24 +75,11 @@ public class AuthController {
 
 
     @GetMapping("/validate")
-    public ResponseEntity<?> validateToken(HttpServletRequest request) {
-        String header = request.getHeader("Authorization");
-
-        if (header == null || !header.startsWith("Bearer ")) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Collections.singletonMap("error", "Missing or invalid Authorization header"));
+    public ResponseEntity<?> validateToken(Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() instanceof UserDetails userDetails) {
+            return ResponseEntity.ok(Collections.singletonMap("status", "valid"));
         }
-
-        String token = header.substring(7);
-        try {
-            if (jwtUtil.validateToken(token)) {
-                return ResponseEntity.ok(Collections.singletonMap("status", "valid"));
-            }
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Collections.singletonMap("error", "Invalid token"));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Collections.singletonMap("error", "Token validation error"));
-        }
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Collections.singletonMap("error", "Invalid token"));
     }
 }

@@ -68,7 +68,7 @@ public class MessageForwardService {
     }
 
     @SuppressWarnings("unchecked")
-    private void handleMessageFromKafka(String key, String message) {
+    public void handleMessageFromKafka(String key, String message) {
         try {
             log.info("[KAFKA] Received message from Kafka - Key: {}, Message: {}", key, message);
 
@@ -85,7 +85,16 @@ public class MessageForwardService {
             }
 
             if (chatId == null && messageData.containsKey("chatId")) {
-                chatId = ((Number) messageData.get("chatId")).longValue();
+                Object chatIdObj = messageData.get("chatId");
+                if (chatIdObj instanceof Number) {
+                    chatId = ((Number) chatIdObj).longValue();
+                } else if (chatIdObj instanceof String) {
+                    try {
+                        chatId = Long.parseLong((String) chatIdObj);
+                    } catch (NumberFormatException e) {
+                        log.warn("[KAFKA] chatId as String is not a number: {}", chatIdObj);
+                    }
+                }
                 log.debug("[KAFKA] ChatId from message body: {}", chatId);
             }
 
@@ -94,63 +103,81 @@ public class MessageForwardService {
                 return;
             }
 
-            // Создаем WebSocketMessage со ВСЕМИ данными, включая файлы
             WebSocketMessage wsMessage = new WebSocketMessage();
 
-            // Определяем тип сообщения из Kafka
-            String messageTypeStr = (String) messageData.get("type");
-            MessageType messageType = MessageType.CHAT_MESSAGE; // По умолчанию
 
+            Object messageTypeObj = messageData.get("type");
+            String messageTypeStr = null;
+            if (messageTypeObj instanceof String) {
+                messageTypeStr = (String) messageTypeObj;
+            } else if (messageTypeObj != null) {
+                messageTypeStr = messageTypeObj.toString();
+            }
+            MessageType messageType = MessageType.CHAT_MESSAGE;
             if (messageTypeStr != null) {
-                if ("MESSAGE_READ".equals(messageTypeStr)) {
-                    messageType = MessageType.MESSAGE_READ;
-                    log.info("[KAFKA] Processing MESSAGE_READ event");
-                } else if ("MESSAGE_UPDATE".equals(messageTypeStr)) {
-                    messageType = MessageType.CHAT_MESSAGE;
-                    log.info("[KAFKA] Processing MESSAGE_UPDATE event");
-                } else if ("NEW_MESSAGE".equals(messageTypeStr)) {
-                    // Откат: не игнорируем, пересылаем как CHAT_MESSAGE
-                    messageType = MessageType.CHAT_MESSAGE;
-                    log.info("[KAFKA] Processing NEW_MESSAGE event");
-                } else if ("CHAT_MESSAGE".equals(messageTypeStr)) {
-                    messageType = MessageType.CHAT_MESSAGE;
-                    log.info("[KAFKA] Processing CHAT_MESSAGE event (likely persisted with id)");
+                try {
+                    messageType = MessageType.valueOf(messageTypeStr);
+                } catch (IllegalArgumentException e) {
+                    log.warn("[KAFKA] Unknown message type: {}", messageTypeStr);
                 }
             }
-
             wsMessage.setType(messageType);
             wsMessage.setContent((String) messageData.get("content"));
             wsMessage.setChatId(chatId);
 
-            // Устанавливаем данные отправителя
             if (messageData.containsKey("senderId")) {
-                wsMessage.setUserId(((Number) messageData.get("senderId")).longValue());
-                wsMessage.setSenderId(((Number) messageData.get("senderId")).longValue());
+                Object senderIdObj = messageData.get("senderId");
+                if (senderIdObj instanceof Number) {
+                    wsMessage.setUserId(((Number) senderIdObj).longValue());
+                    wsMessage.setSenderId(((Number) senderIdObj).longValue());
+                } else if (senderIdObj instanceof String) {
+                    try {
+                        Long senderId = Long.parseLong((String) senderIdObj);
+                        wsMessage.setUserId(senderId);
+                        wsMessage.setSenderId(senderId);
+                    } catch (NumberFormatException e) {
+                        log.warn("[KAFKA] senderId as String is not a number: {}", senderIdObj);
+                    }
+                }
             }
             if (messageData.containsKey("senderUsername")) {
                 wsMessage.setUsername((String) messageData.get("senderUsername"));
                 wsMessage.setSenderUsername((String) messageData.get("senderUsername"));
             }
 
-            // Для MESSAGE_READ добавляем специфичные поля
             if (messageType == MessageType.MESSAGE_READ) {
                 if (messageData.containsKey("messageId")) {
-                    wsMessage.setMessageId(((Number) messageData.get("messageId")).longValue());
+                    Object msgIdObj = messageData.get("messageId");
+                    if (msgIdObj instanceof Number) {
+                        wsMessage.setMessageId(((Number) msgIdObj).longValue());
+                    } else if (msgIdObj instanceof String) {
+                        try {
+                            wsMessage.setMessageId(Long.parseLong((String) msgIdObj));
+                        } catch (NumberFormatException e) {
+                            log.warn("[KAFKA] messageId as String is not a number: {}", msgIdObj);
+                        }
+                    }
                 }
                 if (messageData.containsKey("readerId")) {
-                    Long readerId = ((Number) messageData.get("readerId")).longValue();
-                    wsMessage.setReaderId(readerId);
+                    Object readerIdObj = messageData.get("readerId");
+                    if (readerIdObj instanceof Number) {
+                        wsMessage.setReaderId(((Number) readerIdObj).longValue());
+                    } else if (readerIdObj instanceof String) {
+                        try {
+                            wsMessage.setReaderId(Long.parseLong((String) readerIdObj));
+                        } catch (NumberFormatException e) {
+                            log.warn("[KAFKA] readerId as String is not a number: {}", readerIdObj);
+                        }
+                    }
                 }
                 if (messageData.containsKey("readerUsername")) {
-                    String readerUsername = (String) messageData.get("readerUsername");
-                    wsMessage.setReaderUsername(readerUsername);
+                    wsMessage.setReaderUsername((String) messageData.get("readerUsername"));
                 }
                 log.info("[KAFKA] MESSAGE_READ details: messageId={}, readerId={}, readerUsername={}, senderId={}",
                     messageData.get("messageId"), messageData.get("readerId"),
                     messageData.get("readerUsername"), messageData.get("senderId"));
             }
 
-            // ИСПРАВЛЕНО: Копируем данные о файлах из Kafka
             if (messageData.containsKey("messageType")) {
                 wsMessage.setMessageType((String) messageData.get("messageType"));
                 log.debug("[KAFKA] Message type: {}", messageData.get("messageType"));
@@ -164,7 +191,16 @@ public class MessageForwardService {
                 log.debug("[KAFKA] File name: {}", messageData.get("fileName"));
             }
             if (messageData.containsKey("fileSize")) {
-                wsMessage.setFileSize(((Number) messageData.get("fileSize")).longValue());
+                Object fileSizeObj = messageData.get("fileSize");
+                if (fileSizeObj instanceof Number) {
+                    wsMessage.setFileSize(((Number) fileSizeObj).longValue());
+                } else if (fileSizeObj instanceof String) {
+                    try {
+                        wsMessage.setFileSize(Long.parseLong((String) fileSizeObj));
+                    } catch (NumberFormatException e) {
+                        log.warn("[KAFKA] fileSize as String is not a number: {}", fileSizeObj);
+                    }
+                }
                 log.debug("[KAFKA] File size: {}", messageData.get("fileSize"));
             }
             if (messageData.containsKey("mimeType")) {
@@ -176,13 +212,32 @@ public class MessageForwardService {
                 log.debug("[KAFKA] Thumbnail URL: {}", messageData.get("thumbnailUrl"));
             }
 
-            // ИСПРАВЛЕНО: Проверяем оба поля - id и messageId
             if (messageData.containsKey("id")) {
-                wsMessage.setId(((Number) messageData.get("id")).longValue());
-                log.info("[KAFKA] Message ID from 'id' field: {}", messageData.get("id"));
+                Object idObj = messageData.get("id");
+                if (idObj instanceof Number) {
+                    wsMessage.setId(((Number) idObj).longValue());
+                    log.info("[KAFKA] Message ID from 'id' field: {}", idObj);
+                } else if (idObj instanceof String) {
+                    try {
+                        wsMessage.setId(Long.parseLong((String) idObj));
+                        log.info("[KAFKA] Message ID from 'id' field (string): {}", idObj);
+                    } catch (NumberFormatException e) {
+                        log.warn("[KAFKA] id as String is not a number: {}", idObj);
+                    }
+                }
             } else if (messageData.containsKey("messageId")) {
-                wsMessage.setId(((Number) messageData.get("messageId")).longValue());
-                log.info("[KAFKA] Message ID from 'messageId' field: {}", messageData.get("messageId"));
+                Object msgIdObj = messageData.get("messageId");
+                if (msgIdObj instanceof Number) {
+                    wsMessage.setId(((Number) msgIdObj).longValue());
+                    log.info("[KAFKA] Message ID from 'messageId' field: {}", msgIdObj);
+                } else if (msgIdObj instanceof String) {
+                    try {
+                        wsMessage.setId(Long.parseLong((String) msgIdObj));
+                        log.info("[KAFKA] Message ID from 'messageId' field (string): {}", msgIdObj);
+                    } catch (NumberFormatException e) {
+                        log.warn("[KAFKA] messageId as String is not a number: {}", msgIdObj);
+                    }
+                }
             } else {
                 log.warn("⚠[KAFKA] No ID found in message data! Keys: {}", messageData.keySet());
             }
@@ -191,7 +246,6 @@ public class MessageForwardService {
                 chatId, wsMessage.getUsername(), wsMessage.getUserId(), wsMessage.getContent(),
                 wsMessage.getMessageType(), wsMessage.getFileUrl() != null, wsMessage.getId());
 
-            // Получаем каналы участников чата
             List<Channel> channels = sessionManager.getChatChannels(chatId);
             log.info("[SESSION] Found {} active channels for chat {}", channels.size(), chatId);
 
@@ -207,15 +261,17 @@ public class MessageForwardService {
                         if (channel.isActive()) {
                             channel.writeAndFlush(new TextWebSocketFrame(jsonMessage));
                             successCount++;
-                            log.debug("[FORWARD] Sent message to channel: {}", channel.id().asShortText());
+                            String channelId = (channel != null && channel.id() != null) ? channel.id().asShortText() : "null";
+                            log.debug("[FORWARD] Sent message to channel: {}", channelId);
                         } else {
                             failureCount++;
-                            log.warn("[FORWARD] Channel is not active: {}", channel.id().asShortText());
+                            String channelId = (channel != null && channel.id() != null) ? channel.id().asShortText() : "null";
+                            log.warn("[FORWARD] Channel is not active: {}", channelId);
                         }
                     } catch (Exception e) {
                         failureCount++;
-                        log.error("[FORWARD] Failed to send message to channel {}: {}",
-                            channel.id().asShortText(), e.getMessage(), e);
+                        String channelId = (channel != null && channel.id() != null) ? channel.id().asShortText() : "null";
+                        log.error("[FORWARD] Failed to send message to channel {}: {}", channelId, e.getMessage(), e);
                     }
                 }
 

@@ -32,41 +32,54 @@ public class SessionManager {
     private UserDataService userDataService;
 
     public void addSession(String sessionId, ChannelHandlerContext ctx, String username, Long userId) {
-        // Удаляем предыдущую сессию пользователя, если она существует
-        String existingSessionId = userIdToSessionId.get(userId);
-        if (existingSessionId != null) {
-            log.info("[SESSION] Removing existing session for user {} (ID: {}): {}", username, userId, existingSessionId);
-            removeSession(existingSessionId);
+        if (sessionId == null || userId == null) {
+            log.warn("[SESSION] addSession called with null sessionId or userId: sessionId={}, userId={}", sessionId, userId);
+            return;
         }
+        synchronized (userId.toString().intern()) {
+            // Если sessionId уже существует, удаляем старый userId из userIdToSessionId
+            UserSession oldSession = sessions.get(sessionId);
+            if (oldSession != null && oldSession.getUserId() != null && !oldSession.getUserId().equals(userId)) {
+                userIdToSessionId.remove(oldSession.getUserId());
+            }
+            // Удаляем предыдущую сессию пользователя, если она существует
+            String existingSessionId = userIdToSessionId.get(userId);
+            if (existingSessionId != null) {
+                log.info("[SESSION] Removing existing session for user {} (ID: {}): {}", username, userId, existingSessionId);
+                removeSession(existingSessionId);
+            }
+            UserSession session = new UserSession(sessionId, ctx, username, userId);
+            sessions.put(sessionId, session);
+            userIdToSessionId.put(userId, sessionId);
 
-        UserSession session = new UserSession(sessionId, ctx, username, userId);
-        sessions.put(sessionId, session);
-        userIdToSessionId.put(userId, sessionId);
+            // Обновляем онлайн-статус в базе данных
+            onlineStatusService.setUserOnline(userId);
 
-        // Обновляем онлайн-статус в базе данных
-        onlineStatusService.setUserOnline(userId);
+            // Отправляем уведомление всем о том, что пользователь онлайн
+            broadcastUserOnlineStatus(userId, username, true);
 
-        // Отправляем уведомление всем о том, что пользователь онлайн
-        broadcastUserOnlineStatus(userId, username, true);
-
-        log.info("[SESSION] User session added: {} (userId: {}, sessionId: {})", username, userId, sessionId);
-        log.info("[SESSION] Total active sessions: {}", sessions.size());
+            log.info("[SESSION] User session added: {} (userId: {}, sessionId: {})", username, userId, sessionId);
+            log.info("[SESSION] Total active sessions: {}", sessions.size());
+        }
     }
 
     public void removeSession(String sessionId) {
-        UserSession session = sessions.remove(sessionId);
+        UserSession session = sessions.get(sessionId);
         if (session != null) {
-            userIdToSessionId.remove(session.getUserId());
+            synchronized (session.getUserId().toString().intern()) {
+                sessions.remove(sessionId);
+                userIdToSessionId.remove(session.getUserId());
 
-            // Обновляем онлайн-статус в базе данных
-            onlineStatusService.setUserOffline(session.getUserId());
+                // Обновляем онлайн-статус в базе данных
+                onlineStatusService.setUserOffline(session.getUserId());
 
-            // Отправляем уведомление всем о том, что пользователь оффлайн
-            broadcastUserOnlineStatus(session.getUserId(), session.getUsername(), false);
+                // Отправляем уведомление всем о том, что пользователь оффлайн
+                broadcastUserOnlineStatus(session.getUserId(), session.getUsername(), false);
 
-            log.info("[SESSION] User session removed: {} (userId: {}, sessionId: {})",
-                    session.getUsername(), session.getUserId(), sessionId);
-            log.info("[SESSION] Total active sessions: {}", sessions.size());
+                log.info("[SESSION] User session removed: {} (userId: {}, sessionId: {})",
+                        session.getUsername(), session.getUserId(), sessionId);
+                log.info("[SESSION] Total active sessions: {}", sessions.size());
+            }
         } else {
             log.warn("[SESSION] Attempted to remove non-existent session: {}", sessionId);
         }
@@ -117,7 +130,7 @@ public class SessionManager {
             int sentCount = 0;
             for (UserSession session : sessions.values()) {
                 try {
-                    if (session.getContext().channel().isActive()) {
+                    if (session.getContext() != null && session.getContext().channel() != null && session.getContext().channel().isActive()) {
                         session.getContext().channel().writeAndFlush(
                             new io.netty.handler.codec.http.websocketx.TextWebSocketFrame(json)
                         );
@@ -164,6 +177,28 @@ public class SessionManager {
 
     public int getActiveSessionsCount() {
         return sessions.size();
+    }
+
+    /**
+     * Получить сессию по sessionId (для тестов)
+     */
+    public UserSession getSession(String sessionId) {
+        return sessions.get(sessionId);
+    }
+
+    /**
+     * Получить сессию по userId (для тестов)
+     */
+    public UserSession getSessionByUserId(Long userId) {
+        String sessionId = userIdToSessionId.get(userId);
+        return sessionId != null ? sessions.get(sessionId) : null;
+    }
+
+    /**
+     * Получить все активные сессии (для тестов)
+     */
+    public java.util.Collection<UserSession> getAllSessions() {
+        return sessions.values();
     }
 
     /**
@@ -232,7 +267,7 @@ public class SessionManager {
     /**
      * Fallback метод - получить все активные каналы
      */
-    private List<io.netty.channel.Channel> getAllActiveChannels() {
+    public List<io.netty.channel.Channel> getAllActiveChannels() {
         log.info("[SESSION] Using fallback - getting all active channels");
 
         List<io.netty.channel.Channel> channels = sessions.values().stream()
@@ -258,7 +293,9 @@ public class SessionManager {
 
         // Логируем все активные каналы
         for (int i = 0; i < channels.size(); i++) {
-            log.info("[SESSION] Fallback channel {}: {}", i + 1, channels.get(i).id().asShortText());
+            io.netty.channel.Channel ch = channels.get(i);
+            String channelId = (ch != null && ch.id() != null) ? ch.id().asShortText() : "null";
+            log.info("[SESSION] Fallback channel {}: {}", i + 1, channelId);
         }
 
         return channels;
@@ -276,6 +313,9 @@ public class SessionManager {
      * Отправить сообщение пользователю
      */
     public boolean sendMessageToUser(Long userId, websocket.model.WebSocketMessage message) {
+        if (message == null) {
+            return false;
+        }
         io.netty.channel.Channel channel = getUserChannel(userId);
         if (channel != null && channel.isActive()) {
             try {
@@ -477,9 +517,9 @@ public class SessionManager {
         }
     }
 
-    // Внутренний класс для хранения информации о сессии
+    // Публичный внутренний класс для хранения информации о сессии
     @Getter
-    private static class UserSession {
+    public static class UserSession {
         private final String sessionId;
         private final ChannelHandlerContext context;
         private final String username;

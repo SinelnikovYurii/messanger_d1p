@@ -34,6 +34,9 @@ public class MessageDto {
     private List<MessageReadStatusDto> readBy; // Список пользователей, прочитавших сообщение
     private LocalDateTime readAt; // Когда текущий пользователь прочитал сообщение
 
+    // Поле для удаления сообщения
+    private Boolean isDeleted; // Удалено ли сообщение
+
     // DTO для отправки нового сообщения
     @Data
     @NoArgsConstructor

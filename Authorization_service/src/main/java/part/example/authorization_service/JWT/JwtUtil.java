@@ -71,11 +71,27 @@ public class JwtUtil {
     }
 
     public boolean validateToken(String token, UserDetails userDetails) {
-        final String username = extractAllClaims(token).getSubject();
-        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+        try {
+            final String username = extractAllClaims(token).getSubject();
+            return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private boolean isTokenExpired(String token) {
         return extractAllClaims(token).getExpiration().before(new Date());
+    }
+
+
+    SecretKey getSecretKey() {
+        return SECRET_KEY;
+    }
+    String getSecretString() {
+        return secretString;
+    }
+
+    void setSecretString(String value) {
+        this.secretString = value;
     }
 }

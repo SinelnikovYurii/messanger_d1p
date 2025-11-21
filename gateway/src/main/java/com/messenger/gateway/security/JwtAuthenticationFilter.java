@@ -102,13 +102,16 @@ public class JwtAuthenticationFilter implements WebFilter {
     }
 
     private boolean isPublicPath(String path) {
-        return path.startsWith("/auth/") ||
-               path.equals("/") ||
-               path.startsWith("/public/") ||
-               path.startsWith("/actuator/");
+        return path != null && (
+            path.startsWith("/auth/") ||
+            path.equals("/") ||
+            path.startsWith("/public/") ||
+            path.startsWith("/actuator/") ||
+            path.startsWith("/debug/")
+        );
     }
 
-    private Mono<Void> unauthorizedResponse(ServerWebExchange exchange, String message) {
+    protected Mono<Void> unauthorizedResponse(ServerWebExchange exchange, String message) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.UNAUTHORIZED);
         response.getHeaders().add("Content-Type", "application/json");

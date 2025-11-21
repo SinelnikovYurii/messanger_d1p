@@ -18,12 +18,14 @@ import java.util.Map;
 public class KafkaProducerConfig {
 
     @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
-    private String bootstrapServers;
+    protected String bootstrapServers;
 
     @Bean
     public ProducerFactory<String, String> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
-        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        if (bootstrapServers != null) {
+            configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        }
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configProps.put(ProducerConfig.ACKS_CONFIG, "all");
@@ -32,14 +34,18 @@ public class KafkaProducerConfig {
         configProps.put(ProducerConfig.LINGER_MS_CONFIG, 1);
         configProps.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 33554432);
 
-        log.info("🔧 [KAFKA] Kafka Producer configured with bootstrap servers: {}", bootstrapServers);
+        log.info("[KAFKA] Kafka Producer configured with bootstrap servers: {}", bootstrapServers);
         return new DefaultKafkaProducerFactory<>(configProps);
     }
 
     @Bean
     public KafkaTemplate<String, String> kafkaTemplate() {
         KafkaTemplate<String, String> template = new KafkaTemplate<>(producerFactory());
-        log.info("✅ [KAFKA] KafkaTemplate bean created successfully");
+        log.info("[KAFKA] KafkaTemplate bean created successfully");
         return template;
+    }
+
+    public void setBootstrapServers(String bootstrapServers) {
+        this.bootstrapServers = bootstrapServers;
     }
 }

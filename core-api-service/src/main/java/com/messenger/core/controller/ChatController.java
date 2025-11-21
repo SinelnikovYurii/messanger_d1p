@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 
@@ -52,6 +53,9 @@ public class ChatController {
             @RequestBody ChatDto.CreateChatRequest request,
             HttpServletRequest httpRequest) {
         Long currentUserId = getCurrentUserId(httpRequest);
+        if (request.getChatName() == null || request.getChatName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Имя чата не может быть пустым");
+        }
         ChatDto chat = chatService.createGroupChat(currentUserId, request);
         return ResponseEntity.ok(chat);
     }
@@ -66,6 +70,19 @@ public class ChatController {
             HttpServletRequest request) {
         Long currentUserId = getCurrentUserId(request);
         ChatDto chat = chatService.addParticipants(chatId, currentUserId, userIds);
+        return ResponseEntity.ok(chat);
+    }
+
+    /**
+     * Удалить участника из группового чата
+     */
+    @DeleteMapping("/{chatId}/participants/{participantId}")
+    public ResponseEntity<ChatDto> removeParticipant(
+            @PathVariable Long chatId,
+            @PathVariable Long participantId,
+            HttpServletRequest request) {
+        Long currentUserId = getCurrentUserId(request);
+        ChatDto chat = chatService.removeParticipant(chatId, currentUserId, participantId);
         return ResponseEntity.ok(chat);
     }
 
@@ -157,5 +174,20 @@ public class ChatController {
         }
 
         return userId;
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<?> handleRuntimeException(RuntimeException ex) {
+        if ("Chat not found".equals(ex.getMessage())) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Chat not found");
+        }
+        if (ex instanceof IllegalArgumentException) {
+            String msg = ex.getMessage();
+            if (msg != null && (msg.contains("Ошибка авторизации") || msg.contains("Пользователь не аутентифицирован"))) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(msg);
+            }
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(msg);
+        }
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Internal error");
     }
 }

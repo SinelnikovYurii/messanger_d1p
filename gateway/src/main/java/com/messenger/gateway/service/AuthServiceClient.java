@@ -28,6 +28,6 @@ public class AuthServiceClient {
                 .bodyToMono(Long.class)
                 .doOnSuccess(userId -> log.info("Token validated successfully for user: {}", userId))
                 .doOnError(error -> log.error("Token validation failed: {}", error.getMessage()))
-                .onErrorReturn(null);
+                .onErrorReturn(-1L);
     }
 }

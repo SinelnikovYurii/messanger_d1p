@@ -55,6 +55,10 @@ public class FriendshipService {
             }
         }
 
+        if (friendshipRepository.isBlocked(requesterId, receiverId)) {
+            throw new IllegalArgumentException("Один из пользователей заблокирован");
+        }
+
         // Создаем новый запрос дружбы
         Friendship friendship = new Friendship();
         friendship.setRequester(requester);
@@ -265,6 +269,19 @@ public class FriendshipService {
             throw new IllegalStateException("Пользователи не являются друзьями");
         }
 
+        friendshipRepository.delete(friendship);
+    }
+
+    /**
+     * Удалить дружбу по id
+     */
+    public void deleteFriend(Long friendshipId, Long userId) {
+        Friendship friendship = friendshipRepository.findById(friendshipId)
+            .orElseThrow(() -> new RuntimeException("Дружба не найдена"));
+        // Проверка прав: только участник может удалить
+        if (!friendship.getRequester().getId().equals(userId) && !friendship.getReceiver().getId().equals(userId)) {
+            throw new IllegalArgumentException("Нет прав на удаление дружбы");
+        }
         friendshipRepository.delete(friendship);
     }
 }

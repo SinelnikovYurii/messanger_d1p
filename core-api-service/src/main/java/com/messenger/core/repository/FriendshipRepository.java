@@ -52,4 +52,10 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
            "(f.requester.id = :user2Id AND f.receiver.id = :user1Id)")
     Optional<FriendshipStatus> getFriendshipStatus(@Param("user1Id") Long user1Id,
                                                   @Param("user2Id") Long user2Id);
+
+    // Проверить, заблокирован ли пользователь (существует связь со статусом BLOCKED)
+    @Query("SELECT COUNT(f) > 0 FROM Friendship f WHERE " +
+           "((f.requester.id = :requesterId AND f.receiver.id = :receiverId) OR " +
+           "(f.requester.id = :receiverId AND f.receiver.id = :requesterId)) AND f.status = 'BLOCKED'")
+    boolean isBlocked(@Param("requesterId") Long requesterId, @Param("receiverId") Long receiverId);
 }

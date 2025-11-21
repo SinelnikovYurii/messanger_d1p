@@ -40,6 +40,7 @@ public class PerformanceMonitoringService {
 
             // Показываем общую статистику запросов
             String[] queries = stats.getQueries();
+            if (queries == null) queries = new String[0];
             log.info("Total unique queries executed: {}", queries.length);
             log.info("Slowest query time: {}ms", stats.getQueryExecutionMaxTime());
 

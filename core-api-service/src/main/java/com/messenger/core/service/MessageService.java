@@ -53,6 +53,15 @@ public class MessageService {
             throw new IllegalArgumentException("Вы не являетесь участником этого чата");
         }
 
+        // Валидация текста сообщения
+        String content = request.getContent();
+        if (content == null || content.trim().isEmpty()) {
+            throw new IllegalArgumentException("Текст сообщения не может быть пустым");
+        }
+        if (content.length() > 10000) {
+            throw new IllegalArgumentException("Текст сообщения слишком длинный");
+        }
+
         Message message = new Message();
         message.setContent(request.getContent());
         message.setMessageType(request.getMessageType());
@@ -150,7 +159,7 @@ public class MessageService {
         dto.setIsEdited(message.getIsEdited());
         dto.setCreatedAt(message.getCreatedAt());
         dto.setUpdatedAt(message.getUpdatedAt());
-        dto.setChatId(message.getChat().getId());
+        dto.setChatId(message.getChat() != null ? message.getChat().getId() : null);
 
         // Добавляем поля файлов
         dto.setFileUrl(message.getFileUrl());
@@ -416,7 +425,7 @@ public class MessageService {
         dto.setIsEdited(message.getIsEdited());
         dto.setCreatedAt(message.getCreatedAt());
         dto.setUpdatedAt(message.getUpdatedAt());
-        dto.setChatId(message.getChat().getId());
+        dto.setChatId(message.getChat() != null ? message.getChat().getId() : null);
 
         // Добавляем поля файлов
         dto.setFileUrl(message.getFileUrl());

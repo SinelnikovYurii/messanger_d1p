@@ -154,14 +154,20 @@ public class ChatService {
         User creator = userRepository.findById(creatorId)
             .orElseThrow(() -> new RuntimeException("Создатель не найден"));
 
+        // Проверка на пустой список участников
+        if (request.getParticipantIds() == null || request.getParticipantIds().isEmpty()) {
+            throw new IllegalArgumentException("Список участников не может быть пустым");
+        }
+
         // Получаем участников
         Set<User> participants = new HashSet<>();
         participants.add(creator); // Добавляем создателя
 
-        if (request.getParticipantIds() != null) {
-            List<User> requestedParticipants = userRepository.findAllById(request.getParticipantIds());
-            participants.addAll(requestedParticipants);
+        List<User> requestedParticipants = userRepository.findAllById(request.getParticipantIds());
+        if (requestedParticipants.size() != request.getParticipantIds().size()) {
+            throw new RuntimeException("Один или несколько участников не найдены");
         }
+        participants.addAll(requestedParticipants);
 
         // Создаем групповой чат
         Chat chat = new Chat();
@@ -341,7 +347,6 @@ public class ChatService {
             // Если обычный участник покидает чат
             Set<User> participants = new HashSet<>(chat.getParticipants());
             participants.remove(user);
-            chat.setParticipants(participants);
             Chat updatedChat = chatRepository.save(chat);
 
             // Системное сообщение
@@ -425,6 +430,18 @@ public class ChatService {
             participantIds.size(), chatId, participantIds);
 
         return participantIds;
+    }
+
+    /**
+     * Удалить чат (только создатель может удалить)
+     */
+    public void deleteChat(Long chatId, Long userId) {
+        Chat chat = chatRepository.findById(chatId)
+                .orElseThrow(() -> new RuntimeException("Чат не найден"));
+        if (chat.getCreatedBy() == null || !chat.getCreatedBy().getId().equals(userId)) {
+            throw new IllegalArgumentException("Только создатель чата может удалить чат");
+        }
+        chatRepository.delete(chat);
     }
 
     /**
@@ -566,7 +583,7 @@ public class ChatService {
     }
 
     /**
-     * ИСПРАВЛЕНО: Получить счетчики непрочитанных сообщений для списка чатов (оптимизированный запрос)
+     * Получить счетчики непрочитанных сообщений для списка чатов (оптимизированный запрос)
      */
     private Map<Long, Integer> getUnreadCountsForChats(List<Chat> chats, Long userId) {
         List<Long> chatIds = chats.stream()
@@ -626,5 +643,51 @@ public class ChatService {
 
 
         kafkaTemplate.send("user-notifications", userId.toString(), notification);
+    }
+
+    // Методы для тестирования
+
+    /**
+     * Найти чат по ID (для тестов)
+     */
+    public Optional<Chat> findChatById(Long chatId) {
+        return chatRepository.findById(chatId);
+    }
+
+    /**
+     * Создать чат (для тестов)
+     */
+    public Chat createChat(Chat chat) {
+        return chatRepository.save(chat);
+    }
+
+    /**
+     * Добавить участника в чат (для тестов)
+     */
+    public void addParticipant(Long chatId, Long userId) {
+        Chat chat = chatRepository.findById(chatId)
+            .orElseThrow(() -> new RuntimeException("Чат не найден"));
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+        Set<User> participants = new HashSet<>(chat.getParticipants());
+        participants.add(user);
+        chat.setParticipants(participants);
+        chatRepository.save(chat);
+    }
+
+    /**
+     * Получить участников чата
+     */
+    public Set<User> getChatParticipants(Long chatId, Long userId) {
+        Chat chat = chatRepository.findById(chatId)
+            .orElseThrow(() -> new RuntimeException("Чат не найден"));
+        // Проверяем, что пользователь участник
+        boolean isParticipant = chat.getParticipants().stream()
+            .anyMatch(u -> u.getId().equals(userId));
+        if (!isParticipant) {
+            throw new IllegalArgumentException("Нет доступа к участникам чата");
+        }
+        return chat.getParticipants();
     }
 }

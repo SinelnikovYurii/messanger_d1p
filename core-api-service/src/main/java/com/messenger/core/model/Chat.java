@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.BatchSize;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -57,7 +58,7 @@ public class Chat {
         inverseJoinColumns = @JoinColumn(name = "user_id")
     )
     @BatchSize(size = 16)
-    private Set<User> participants;
+    private Set<User> participants = new HashSet<>();
 
     // Сообщения в чате
     @OneToMany(mappedBy = "chat", fetch = FetchType.LAZY, cascade = CascadeType.ALL)

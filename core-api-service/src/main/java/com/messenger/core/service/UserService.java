@@ -273,4 +273,21 @@ public class UserService {
 
         return result;
     }
+
+    /**
+     * Найти пользователя по ID
+     */
+    public Optional<User> findUserById(Long id) {
+        return userRepository.findById(id);
+    }
+
+    /**
+     * Сменить пароль пользователя
+     */
+    public void changePassword(Long userId, String newPassword) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        user.setPassword(newPassword); // В реальном проекте пароль должен быть захеширован!
+        userRepository.save(user);
+    }
 }

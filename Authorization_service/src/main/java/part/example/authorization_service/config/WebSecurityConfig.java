@@ -1,5 +1,6 @@
 package part.example.authorization_service.config;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -17,7 +18,9 @@ import org.springframework.security.authentication.dao.DaoAuthenticationProvider
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import part.example.authorization_service.JWT.JwtAuthFilter;
+import part.example.authorization_service.JWT.JwtAuthenticationFilter;
+import part.example.authorization_service.JWT.JwtAuthenticationEntryPoint;
+import part.example.authorization_service.JWT.JwtAccessDeniedHandler;
 import part.example.authorization_service.JWT.JwtUtil;
 import part.example.authorization_service.repository.UserRepository;
 import part.example.authorization_service.service.CustomUserDetailsService;
@@ -28,40 +31,53 @@ import java.util.Arrays;
 @EnableWebSecurity
 @EnableMethodSecurity
 public class WebSecurityConfig {
+    @Autowired
+    private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+    @Autowired
+    private JwtAccessDeniedHandler jwtAccessDeniedHandler;
+    @Autowired
+    private JwtUtil jwtUtil;
+    @Autowired
+    private CustomUserDetailsService userDetailsService;
 
     @Bean
-    public SecurityFilterChain filterChain(
-            HttpSecurity http,
-            JwtUtil jwtUtil,
-            UserRepository userRepository
-    ) throws Exception {
+    public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        return new JwtAuthenticationFilter(jwtUtil, userDetailsService);
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                    .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                    .accessDeniedHandler(jwtAccessDeniedHandler)
+                )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/register", "/auth/login", "/auth/validate").permitAll()
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )
-                .addFilterBefore(
-                        new JwtAuthFilter(jwtUtil, userRepository),
-                        UsernamePasswordAuthenticationFilter.class
-                )
+                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(HttpSecurity http,
-                                                       CustomUserDetailsService userDetailsService,
-                                                       PasswordEncoder passwordEncoder) throws Exception {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder);
+    public DaoAuthenticationProvider daoAuthenticationProvider(CustomUserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder);
+        return provider;
+    }
 
+    @Bean
+    public AuthenticationManager authenticationManager(HttpSecurity http,
+                                                       DaoAuthenticationProvider daoAuthenticationProvider) throws Exception {
         return http.getSharedObject(AuthenticationManagerBuilder.class)
-                .authenticationProvider(authProvider)
+                .authenticationProvider(daoAuthenticationProvider)
                 .build();
     }
 
