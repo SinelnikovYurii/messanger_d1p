@@ -1,4 +1,4 @@
-package websocket.model;
+package com.messenger.websocket.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;

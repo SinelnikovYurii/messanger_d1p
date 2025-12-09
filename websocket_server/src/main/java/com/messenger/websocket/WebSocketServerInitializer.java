@@ -1,4 +1,4 @@
-package websocket;
+package com.messenger.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -14,10 +14,10 @@ import io.netty.handler.codec.http.websocketx.extensions.compression.WebSocketSe
 import io.netty.handler.codec.http.cors.CorsConfig;
 import io.netty.handler.codec.http.cors.CorsConfigBuilder;
 import io.netty.handler.codec.http.cors.CorsHandler;
-import websocket.handler.WebSocketFrameHandler;
-import websocket.handler.HttpRequestHandler;
-import websocket.service.JwtAuthService;
-import websocket.service.SessionManager;
+import com.messenger.websocket.handler.WebSocketFrameHandler;
+import com.messenger.websocket.handler.HttpRequestHandler;
+import com.messenger.websocket.service.JwtAuthService;
+import com.messenger.websocket.service.SessionManager;
 
 public class WebSocketServerInitializer extends ChannelInitializer<SocketChannel> {
 

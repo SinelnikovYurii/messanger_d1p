@@ -23,6 +23,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Сервис для работы с сообщениями в чатах.
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -37,6 +40,9 @@ public class MessageService {
 
     /**
      * Отправить сообщение в чат
+     * @param userId ID отправителя
+     * @param request объект запроса на отправку сообщения
+     * @return DTO отправленного сообщения
      */
     public MessageDto sendMessage(Long userId, MessageDto.SendMessageRequest request) {
         User sender = userRepository.findById(userId)

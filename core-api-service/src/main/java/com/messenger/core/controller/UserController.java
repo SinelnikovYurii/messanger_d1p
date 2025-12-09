@@ -12,16 +12,27 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Контроллер для управления пользователями и их профилями.
+ * Предоставляет эндпоинты для получения, поиска, обновления пользователей, работы с публичными ключами и prekey bundle.
+ */
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
 @Slf4j
 public class UserController {
 
+    /**
+     * Сервис для работы с пользователями
+     */
     private final UserService userService;
 
+    /**
+     * Получить всех пользователей (кроме текущего).
+     * @param request HTTP-запрос (используется для получения ID пользователя из заголовка)
+     * @return список пользователей
+     */
     @GetMapping("/all")
-    // Явно указываем, что доступ к этому эндпоинту имеют пользователи с ролью ROLE_USER
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<List<UserDto>> getAllUsers(HttpServletRequest request) {
         log.info("Получен запрос на получение всех пользователей");
@@ -44,6 +55,11 @@ public class UserController {
         }
     }
 
+    /**
+     * Получить список друзей пользователя.
+     * @param request HTTP-запрос (используется для получения ID пользователя из заголовка)
+     * @return список друзей
+     */
     @GetMapping("/friends")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<List<UserDto>> getFriends(HttpServletRequest request) {
@@ -67,6 +83,12 @@ public class UserController {
         }
     }
 
+    /**
+     * Поиск пользователей по строке запроса.
+     * @param query поисковый запрос
+     * @param request HTTP-запрос (используется для получения ID пользователя из заголовка)
+     * @return список результатов поиска
+     */
     @GetMapping("/search")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<List<UserDto.UserSearchResult>> searchUsers(
@@ -100,7 +122,12 @@ public class UserController {
         }
     }
 
-    // Обновить профиль пользователя
+    /**
+     * Обновить профиль пользователя.
+     * @param request объект с данными для обновления профиля
+     * @param httpRequest HTTP-запрос (используется для получения ID пользователя из заголовка)
+     * @return обновлённый профиль пользователя или сообщение об ошибке
+     */
     @PutMapping("/profile")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> updateProfile(
@@ -129,7 +156,11 @@ public class UserController {
         }
     }
 
-    // Получить информацию о текущем пользователе
+    /**
+     * Получить информацию о текущем пользователе.
+     * @param httpRequest HTTP-запрос (используется для получения ID пользователя из заголовка)
+     * @return информация о пользователе или сообщение об ошибке
+     */
     @GetMapping("/profile")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> getCurrentUserProfile(HttpServletRequest httpRequest) {
@@ -154,7 +185,12 @@ public class UserController {
         }
     }
 
-    // Загрузить аватар профиля
+    /**
+     * Загрузить аватар профиля пользователя.
+     * @param file файл-аватар
+     * @param httpRequest HTTP-запрос (используется для получения ID пользователя из заголовка)
+     * @return URL аватара или сообщение об ошибке
+     */
     @PostMapping("/profile/avatar")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> uploadAvatar(
@@ -195,7 +231,13 @@ public class UserController {
         }
     }
 
-    // Обновить онлайн-статус пользователя (вызывается WebSocket сервером)
+    /**
+     * Обновить онлайн-статус пользователя (вызывается WebSocket сервером).
+     * @param userId ID пользователя
+     * @param isOnline онлайн-статус
+     * @param httpRequest HTTP-запрос (используется для проверки внутреннего сервиса)
+     * @return результат обновления статуса
+     */
     @PostMapping("/{userId}/status/online")
     public ResponseEntity<?> updateOnlineStatus(
             @PathVariable Long userId,
@@ -220,7 +262,12 @@ public class UserController {
         }
     }
 
-    // Получить данные пользователя по ID (для внутренних сервисов)
+    /**
+     * Получить данные пользователя по ID (для внутренних сервисов).
+     * @param userId ID пользователя
+     * @param httpRequest HTTP-запрос (используется для проверки внутреннего сервиса)
+     * @return данные пользователя или сообщение об ошибке
+     */
     @GetMapping("/{userId}/internal")
     public ResponseEntity<?> getUserDataInternal(
             @PathVariable Long userId,
@@ -244,7 +291,12 @@ public class UserController {
         }
     }
 
-    // Сохранить публичный ключ пользователя
+    /**
+     * Сохранить публичный ключ пользователя.
+     * @param userId ID пользователя
+     * @param body тело запроса с публичным ключом
+     * @return статус сохранения
+     */
     @PostMapping("/{userId}/public-key")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> savePublicKey(@PathVariable Long userId, @RequestBody Map<String, String> body) {
@@ -256,7 +308,11 @@ public class UserController {
         return ResponseEntity.ok(Map.of("status", "ok"));
     }
 
-    // Получить публичный ключ пользователя
+    /**
+     * Получить публичный ключ пользователя.
+     * @param userId ID пользователя
+     * @return публичный ключ или 404
+     */
     @GetMapping("/{userId}/public-key")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> getPublicKey(@PathVariable Long userId) {
@@ -267,7 +323,12 @@ public class UserController {
         return ResponseEntity.ok(Map.of("publicKey", publicKey));
     }
 
-    // Сохранить X3DH prekey bundle
+    /**
+     * Сохранить X3DH prekey bundle пользователя.
+     * @param userId ID пользователя
+     * @param body тело запроса с ключами
+     * @return статус сохранения или сгенерированный bundle
+     */
     @PostMapping("/{userId}/prekey-bundle")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> savePreKeyBundle(@PathVariable Long userId, @RequestBody Map<String, String> body) {
@@ -298,7 +359,11 @@ public class UserController {
         return ResponseEntity.ok(Map.of("status", "ok"));
     }
 
-    // Получить X3DH prekey bundle
+    /**
+     * Получить X3DH prekey bundle пользователя.
+     * @param userId ID пользователя
+     * @return prekey bundle или 404
+     */
     @GetMapping("/{userId}/prekey-bundle")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> getPreKeyBundle(@PathVariable Long userId) {
@@ -313,7 +378,11 @@ public class UserController {
         return ResponseEntity.ok(bundle);
     }
 
-    // Получить PreKeyBundleProtocol для Double Ratchet
+    /**
+     * Получить PreKeyBundleProtocol для Double Ratchet.
+     * @param userId ID пользователя
+     * @return prekey bundle protocol или 404
+     */
     @GetMapping("/{userId}/prekey-bundle-protocol")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> getPreKeyBundleProtocol(@PathVariable Long userId) {

@@ -30,6 +30,9 @@ import java.util.Base64;
 import java.util.stream.Collectors;
 import java.security.spec.ECGenParameterSpec;
 
+/**
+ * Сервис для управления пользователями, их профилями, друзьями и ключами.
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -44,6 +47,9 @@ public class UserService {
 
     /**
      * Поиск пользователей по запросу
+     * @param query поисковый запрос
+     * @param currentUserId ID текущего пользователя
+     * @return список результатов поиска
      */
     @Transactional(readOnly = true)
     public List<UserDto.UserSearchResult> searchUsers(String query, Long currentUserId) {
@@ -57,6 +63,9 @@ public class UserService {
 
     /**
      * Получить информацию о пользователе
+     * @param userId ID пользователя
+     * @param currentUserId ID текущего пользователя
+     * @return DTO пользователя
      */
     @Transactional(readOnly = true)
     public UserDto getUserInfo(Long userId, Long currentUserId) {
@@ -75,7 +84,9 @@ public class UserService {
     }
 
     /**
-     * Обновить статус онлайн
+     * Обновить статус онлайн пользователя
+     * @param userId ID пользователя
+     * @param isOnline новый онлайн-статус
      */
     @CacheEvict(value = "users", key = "#userId")
     public void updateOnlineStatus(Long userId, boolean isOnline) {

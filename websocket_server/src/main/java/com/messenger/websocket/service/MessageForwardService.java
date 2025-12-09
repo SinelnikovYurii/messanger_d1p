@@ -1,4 +1,4 @@
-package websocket.service;
+package com.messenger.websocket.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.Channel;
@@ -11,8 +11,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.stereotype.Service;
-import websocket.model.WebSocketMessage;
-import websocket.model.MessageType;
+import com.messenger.websocket.model.WebSocketMessage;
+import com.messenger.websocket.model.MessageType;
 
 
 import java.time.Duration;

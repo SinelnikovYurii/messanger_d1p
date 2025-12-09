@@ -1,12 +1,12 @@
-package websocket.handler;
+package com.messenger.websocket.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
-import websocket.model.WebSocketMessage;
-import websocket.model.MessageType;
-import websocket.service.JwtAuthService;
-import websocket.service.SessionManager;
+import com.messenger.websocket.model.WebSocketMessage;
+import com.messenger.websocket.model.MessageType;
+import com.messenger.websocket.service.JwtAuthService;
+import com.messenger.websocket.service.SessionManager;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;

@@ -1,4 +1,4 @@
-package websocket.config;
+package com.messenger.websocket.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -8,9 +8,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.KafkaTemplate;
-import websocket.service.JwtAuthService;
-import websocket.service.MessageForwardService;
-import websocket.service.SessionManager;
+import com.messenger.websocket.service.JwtAuthService;
+import com.messenger.websocket.service.MessageForwardService;
+import com.messenger.websocket.service.SessionManager;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -31,7 +31,7 @@ public class WebSocketConfig {
     @Autowired
     private MessageForwardService messageForwardService;
 
-    private websocket.WebSocketServer webSocketServer;
+    private com.messenger.websocket.WebSocketServer webSocketServer;
     private Thread webSocketThread;
 
     @Bean
@@ -53,7 +53,7 @@ public class WebSocketConfig {
         try {
             log.info("[CONFIG] Initializing WebSocket server with Kafka integration...");
 
-            webSocketServer = new websocket.WebSocketServer(webSocketPort, jwtAuthService, objectMapper(), kafkaTemplate, sessionManager());
+            webSocketServer = new com.messenger.websocket.WebSocketServer(webSocketPort, jwtAuthService, objectMapper(), kafkaTemplate, sessionManager());
 
             webSocketThread = new Thread(() -> {
                 try {

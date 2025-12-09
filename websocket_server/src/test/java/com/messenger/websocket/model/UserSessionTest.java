@@ -3,7 +3,7 @@ package com.messenger.websocket.model;
 import io.netty.channel.ChannelHandlerContext;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import websocket.model.UserSession;
+import com.messenger.websocket.model.UserSession;
 
 import static org.junit.jupiter.api.Assertions.*;
 

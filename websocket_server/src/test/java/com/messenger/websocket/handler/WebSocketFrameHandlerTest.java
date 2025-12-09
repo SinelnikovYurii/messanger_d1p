@@ -10,11 +10,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.kafka.core.KafkaTemplate;
-import websocket.handler.WebSocketFrameHandler;
-import websocket.model.MessageType;
-import websocket.model.WebSocketMessage;
-import websocket.service.JwtAuthService;
-import websocket.service.SessionManager;
+import com.messenger.websocket.handler.WebSocketFrameHandler;
+import com.messenger.websocket.model.MessageType;
+import com.messenger.websocket.model.WebSocketMessage;
+import com.messenger.websocket.service.JwtAuthService;
+import com.messenger.websocket.service.SessionManager;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;

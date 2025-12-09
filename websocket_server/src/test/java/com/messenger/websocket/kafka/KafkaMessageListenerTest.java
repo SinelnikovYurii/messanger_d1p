@@ -7,8 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import websocket.kafka.KafkaMessageListener;
-import websocket.service.SessionManager;
+import com.messenger.websocket.kafka.KafkaMessageListener;
+import com.messenger.websocket.service.SessionManager;
 
 import java.util.HashMap;
 import java.util.Map;

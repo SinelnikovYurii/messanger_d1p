@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
-import websocket.config.KafkaProducerConfig;
+import com.messenger.websocket.config.KafkaProducerConfig;
 
 import java.util.Map;
 

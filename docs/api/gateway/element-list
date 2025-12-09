@@ -1,0 +1,7 @@
+com.messenger.gateway
+com.messenger.gateway.config
+com.messenger.gateway.controller
+com.messenger.gateway.exception
+com.messenger.gateway.filter
+com.messenger.gateway.security
+com.messenger.gateway.service

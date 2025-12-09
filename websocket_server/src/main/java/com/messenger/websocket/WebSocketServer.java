@@ -1,9 +1,9 @@
-package websocket;
+package com.messenger.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.kafka.core.KafkaTemplate;
-import websocket.service.JwtAuthService;
-import websocket.service.SessionManager;
+import com.messenger.websocket.service.JwtAuthService;
+import com.messenger.websocket.service.SessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.EventLoopGroup;

@@ -1,4 +1,4 @@
-package websocket.handler;
+package com.messenger.websocket.handler;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;

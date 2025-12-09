@@ -6,7 +6,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import org.junit.jupiter.api.Test;
-import websocket.handler.HttpRequestHandler;
+import com.messenger.websocket.handler.HttpRequestHandler;
 
 import static org.junit.jupiter.api.Assertions.*;
 

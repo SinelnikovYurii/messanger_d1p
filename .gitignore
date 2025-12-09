@@ -37,6 +37,7 @@ out/
 .sts4-cache
 bin/
 
+update-docs.ps1
 to_do.txt
 добавление e2ee.txt
 

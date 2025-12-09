@@ -1,4 +1,4 @@
-package websocket.model;
+package com.messenger.websocket.model;
 
 import io.netty.channel.ChannelHandlerContext;
 import lombok.Data;

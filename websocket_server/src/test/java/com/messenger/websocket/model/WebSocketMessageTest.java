@@ -3,8 +3,8 @@ package com.messenger.websocket.model;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.Test;
-import websocket.model.MessageType;
-import websocket.model.WebSocketMessage;
+import com.messenger.websocket.model.MessageType;
+import com.messenger.websocket.model.WebSocketMessage;
 
 import java.time.LocalDateTime;
 

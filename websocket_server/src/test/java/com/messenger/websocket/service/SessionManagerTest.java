@@ -5,10 +5,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import websocket.service.ChatParticipantService;
-import websocket.service.OnlineStatusService;
-import websocket.service.SessionManager;
-import websocket.service.UserDataService;
+import com.messenger.websocket.service.ChatParticipantService;
+import com.messenger.websocket.service.OnlineStatusService;
+import com.messenger.websocket.service.SessionManager;
+import com.messenger.websocket.service.UserDataService;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -216,7 +216,7 @@ public class SessionManagerTest {
         when(ctxMock.channel()).thenReturn(channelMock);
         when(channelMock.isActive()).thenReturn(true);
         sessionManager.addSession("sessionD", ctxMock, "userD", userId);
-        websocket.model.WebSocketMessage msg = new websocket.model.WebSocketMessage();
+        com.messenger.websocket.model.WebSocketMessage msg = new com.messenger.websocket.model.WebSocketMessage();
         assertTrue(sessionManager.sendMessageToUser(userId, msg));
         verify(channelMock, atLeastOnce()).writeAndFlush(any());
     }
@@ -229,7 +229,7 @@ public class SessionManagerTest {
         when(ctxMock.channel()).thenReturn(channelMock);
         when(channelMock.isActive()).thenReturn(false);
         sessionManager.addSession("sessionE", ctxMock, "userE", userId);
-        websocket.model.WebSocketMessage msg = new websocket.model.WebSocketMessage();
+        com.messenger.websocket.model.WebSocketMessage msg = new com.messenger.websocket.model.WebSocketMessage();
         assertFalse(sessionManager.sendMessageToUser(userId, msg));
     }
 
@@ -374,7 +374,7 @@ public class SessionManagerTest {
         when(channelMock.id()).thenReturn(channelIdMock);
         when(channelIdMock.asShortText()).thenReturn("ch102");
         sessionManager.addSession("session102", ctxMock, "user102", userId);
-        websocket.model.WebSocketMessage msg = mock(websocket.model.WebSocketMessage.class);
+        com.messenger.websocket.model.WebSocketMessage msg = mock(com.messenger.websocket.model.WebSocketMessage.class);
         // Ломаем ObjectMapper через spy
         SessionManager spyManager = spy(sessionManager);
         doThrow(new RuntimeException("Serialization error")).when(channelMock).writeAndFlush(any());
@@ -528,7 +528,7 @@ public class SessionManagerTest {
         when(channelMock.id()).thenReturn(channelIdMock);
         when(channelIdMock.asShortText()).thenReturn("chLastSeen");
         sessionManager.addSession(sessionId, ctxMock, "userLastSeen", userId);
-        websocket.service.UserDataService.UserData userData = mock(websocket.service.UserDataService.UserData.class);
+        com.messenger.websocket.service.UserDataService.UserData userData = mock(com.messenger.websocket.service.UserDataService.UserData.class);
         java.time.LocalDateTime lastSeen = java.time.LocalDateTime.now().minusMinutes(5);
         when(userData.getLastSeen()).thenReturn(lastSeen);
         when(userDataService.getUserData(userId)).thenReturn(userData);
@@ -606,7 +606,7 @@ public class SessionManagerTest {
 
     @Test
     void testSendMessageToUserNonExistentUser() {
-        assertFalse(sessionManager.sendMessageToUser(99999L, new websocket.model.WebSocketMessage()));
+        assertFalse(sessionManager.sendMessageToUser(99999L, new com.messenger.websocket.model.WebSocketMessage()));
     }
 
     @Test

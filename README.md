@@ -75,17 +75,6 @@
 
 ---
 
-### Анализ качества кода
-
-| Метрика | Значение |
-|:--------|:--------:|
-| **Процент комментариев** | 6.9% |
-| **Соотношение код/комментарии** | 13.2:1 |
-| **Средний размер файла** | 136 строк |
-| **Документация** | Присутствует |
-
----
-
 ### Технологический стек
 
 **Backend:**
@@ -131,6 +120,21 @@
 - **core-api-service**: покрытие инструкций 76%, ветвлений 66%. 
 - **gateway**: покрытие инструкций 85%, ветвлений 72%. 
 - **websocket_server**: покрытие инструкций 73%, ветвлений 76%. 
+
+---
+
+## Документация
+
+### API Documentation (JavaDoc)
+
+Объединённая JavaDoc документация для всех backend модулей доступна в директории `docs/api/`.
+
+**Быстрый доступ:**
+- **[Главная страница документации](docs/api/index.html)** - обзор всех модулей
+- **[Authorization Service API](docs/api/authorization-service/index.html)** - документация сервиса авторизации
+- **[Core API Service API](docs/api/core-api-service/index.html)** - документация основного API
+- **[Gateway API](docs/api/gateway/index.html)** - документация API Gateway
+- **[WebSocket Server API](docs/api/websocket-server/index.html)** - документация WebSocket сервера
 
 
 

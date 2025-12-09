@@ -1,4 +1,4 @@
-package websocket;
+package com.messenger.websocket;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;

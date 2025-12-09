@@ -1,0 +1,1 @@
+packageSearchIndex = [{"l":"All Packages","u":"allpackages-index.html"},{"l":"com.messenger.websocket"},{"l":"com.messenger.websocket.config"},{"l":"com.messenger.websocket.handler"},{"l":"com.messenger.websocket.kafka"},{"l":"com.messenger.websocket.model"},{"l":"com.messenger.websocket.service"}];updateSearchResults();

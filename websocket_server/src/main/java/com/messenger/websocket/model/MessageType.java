@@ -1,4 +1,4 @@
-package websocket.model;
+package com.messenger.websocket.model;
 
 public enum MessageType {
     JOIN_CHAT,

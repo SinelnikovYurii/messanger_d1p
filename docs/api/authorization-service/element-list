@@ -1,0 +1,8 @@
+part.example.authorization_service
+part.example.authorization_service.config
+part.example.authorization_service.cotroller
+part.example.authorization_service.DTO
+part.example.authorization_service.JWT
+part.example.authorization_service.models
+part.example.authorization_service.repository
+part.example.authorization_service.service

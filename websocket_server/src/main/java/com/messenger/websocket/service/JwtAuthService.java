@@ -1,4 +1,4 @@
-package websocket.service;
+package com.messenger.websocket.service;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;

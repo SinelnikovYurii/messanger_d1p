@@ -1,4 +1,4 @@
-package websocket.service;
+package com.messenger.websocket.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

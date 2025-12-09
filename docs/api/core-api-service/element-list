@@ -1,0 +1,10 @@
+com.messenger.core
+com.messenger.core.aspect
+com.messenger.core.config
+com.messenger.core.controller
+com.messenger.core.dto
+com.messenger.core.dto.request
+com.messenger.core.model
+com.messenger.core.repository
+com.messenger.core.security
+com.messenger.core.service

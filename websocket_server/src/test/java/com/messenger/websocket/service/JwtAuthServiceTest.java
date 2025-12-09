@@ -4,7 +4,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import websocket.service.JwtAuthService;
+import com.messenger.websocket.service.JwtAuthService;
 
 import javax.crypto.SecretKey;
 import java.util.Date;

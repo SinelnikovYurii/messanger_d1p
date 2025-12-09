@@ -1,4 +1,4 @@
-package websocket.kafka;
+package com.messenger.websocket.kafka;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -6,7 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
-import websocket.service.SessionManager;
+import com.messenger.websocket.service.SessionManager;
 
 import java.util.Map;
 

@@ -8,10 +8,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import websocket.model.MessageType;
-import websocket.model.WebSocketMessage;
-import websocket.service.MessageForwardService;
-import websocket.service.SessionManager;
+import com.messenger.websocket.model.MessageType;
+import com.messenger.websocket.model.WebSocketMessage;
+import com.messenger.websocket.service.MessageForwardService;
+import com.messenger.websocket.service.SessionManager;
 
 import java.util.Arrays;
 import java.util.Collections;

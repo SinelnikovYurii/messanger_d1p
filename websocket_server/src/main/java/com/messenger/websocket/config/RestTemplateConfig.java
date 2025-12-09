@@ -1,4 +1,4 @@
-package websocket.config;
+package com.messenger.websocket.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

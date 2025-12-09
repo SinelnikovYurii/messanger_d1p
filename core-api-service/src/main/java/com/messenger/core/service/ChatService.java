@@ -19,6 +19,9 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Сервис для управления чатами, их участниками и сообщениями.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -35,6 +38,8 @@ public class ChatService {
 
     /**
      * Получить все чаты пользователя
+     * @param userId ID пользователя
+     * @return список чатов
      */
     @Transactional(readOnly = true)
     public List<ChatDto> getUserChats(Long userId) {
@@ -90,6 +95,9 @@ public class ChatService {
 
     /**
      * Создать приватный чат между двумя пользователями
+     * @param currentUserId ID текущего пользователя
+     * @param participantId ID второго участника
+     * @return DTO чата
      */
     public ChatDto createPrivateChat(Long currentUserId, Long participantId) {
         if (currentUserId.equals(participantId)) {

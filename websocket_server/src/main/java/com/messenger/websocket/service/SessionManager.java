@@ -1,4 +1,4 @@
-package websocket.service;
+package com.messenger.websocket.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelHandlerContext;
@@ -7,7 +7,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import websocket.model.MessageType;
+import com.messenger.websocket.model.MessageType;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -90,7 +90,7 @@ public class SessionManager {
      */
     private void broadcastUserOnlineStatus(Long userId, String username, boolean isOnline) {
         try {
-            websocket.model.WebSocketMessage statusMessage = new websocket.model.WebSocketMessage();
+            com.messenger.websocket.model.WebSocketMessage statusMessage = new com.messenger.websocket.model.WebSocketMessage();
             statusMessage.setType(isOnline ? MessageType.USER_ONLINE : MessageType.USER_OFFLINE);
             statusMessage.setUserId(userId);
             statusMessage.setUsername(username);
@@ -312,7 +312,7 @@ public class SessionManager {
     /**
      * Отправить сообщение пользователю
      */
-    public boolean sendMessageToUser(Long userId, websocket.model.WebSocketMessage message) {
+    public boolean sendMessageToUser(Long userId, com.messenger.websocket.model.WebSocketMessage message) {
         if (message == null) {
             return false;
         }
@@ -345,7 +345,7 @@ public class SessionManager {
             log.info("[BROADCAST] Starting broadcast for chat {} with data: {}", chatId, messageData);
 
             // Создаем WebSocket сообщение
-            websocket.model.WebSocketMessage wsMessage = new websocket.model.WebSocketMessage();
+            com.messenger.websocket.model.WebSocketMessage wsMessage = new com.messenger.websocket.model.WebSocketMessage();
 
             // ИСПРАВЛЕНО: Определяем тип сообщения на основе поля "type" из Kafka
             String messageTypeStr = (String) messageData.get("type");

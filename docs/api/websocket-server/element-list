@@ -1,0 +1,6 @@
+com.messenger.websocket
+com.messenger.websocket.config
+com.messenger.websocket.handler
+com.messenger.websocket.kafka
+com.messenger.websocket.model
+com.messenger.websocket.service

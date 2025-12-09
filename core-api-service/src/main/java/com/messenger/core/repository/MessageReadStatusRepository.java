@@ -77,7 +77,12 @@ public interface MessageReadStatusRepository extends JpaRepository<MessageReadSt
     List<MessageReadStatus> findByChatIdAndMessageIdIn(@Param("chatId") Long chatId, @Param("messageIds") List<Long> messageIds);
 
     /**
-     * Возвращает Map<chatId, unreadCount>
+     * Возвращает список массивов вида Object[]{chatId, unreadCount} для чатов, где есть непрочитанные сообщения.
+     * <p>Каждый элемент: [Long chatId, Long unreadCount]</p>
+     *
+     * @param chatIds список ID чатов
+     * @param userId ID пользователя
+     * @return список массивов Object[]{chatId, unreadCount}
      */
     @Query("SELECT m.chat.id as chatId, COUNT(m) as unreadCount " +
            "FROM Message m " +
