@@ -19,11 +19,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.*;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Base64;
 import java.util.stream.Collectors;
+import java.security.spec.ECGenParameterSpec;
 
 @Service
 @RequiredArgsConstructor
@@ -289,5 +294,334 @@ public class UserService {
             .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
         user.setPassword(newPassword); // В реальном проекте пароль должен быть захеширован!
         userRepository.save(user);
+    }
+
+    /**
+     * Сохранить публичный ключ пользователя
+     */
+    public void savePublicKey(Long userId, String publicKey) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        user.setPublicKey(publicKey);
+        userRepository.save(user);
+    }
+
+    /**
+     * Получить публичный ключ пользователя
+     */
+    @Transactional(readOnly = true)
+    public String getPublicKey(Long userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        return user.getPublicKey();
+    }
+
+    /**
+     * Сохранить X3DH prekey bundle пользователя
+     */
+    public void savePreKeyBundle(Long userId, String identityKey, String signedPreKey, String oneTimePreKeys, String signedPreKeySignature) {
+        if (identityKey == null || identityKey.isEmpty() ||
+            signedPreKey == null || signedPreKey.isEmpty() ||
+            oneTimePreKeys == null || oneTimePreKeys.isEmpty()) {
+            throw new IllegalArgumentException("identityKey, signedPreKey и oneTimePreKeys обязательны");
+        }
+
+        System.out.println("[UserService] Saving prekey bundle for user " + userId);
+        System.out.println("[UserService] identityKey: " + identityKey.substring(0, Math.min(30, identityKey.length())) + "...");
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        user.setIdentityKey(identityKey);
+        user.setSignedPreKey(signedPreKey);
+        user.setOneTimePreKeys(oneTimePreKeys);
+        user.setSignedPreKeySignature(signedPreKeySignature != null ? signedPreKeySignature : "");
+        user.setPublicKey(identityKey);
+        userRepository.save(user);
+
+        System.out.println("[UserService] ✓ Saved successfully for user " + userId);
+    }
+
+    /**
+     * Получить X3DH prekey bundle пользователя
+     */
+    @Transactional
+    public Map<String, String> getPreKeyBundle(Long userId) {
+        System.out.println("[UserService-GET] Getting prekey bundle for user " + userId);
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+        System.out.println("[UserService-GET] User found: " + user.getUsername());
+        System.out.println("[UserService-GET] identityKey: " + (user.getIdentityKey() != null ? user.getIdentityKey().substring(0, Math.min(30, user.getIdentityKey().length())) + "..." : "NULL"));
+        System.out.println("[UserService-GET] signedPreKey: " + (user.getSignedPreKey() != null ? user.getSignedPreKey().substring(0, Math.min(30, user.getSignedPreKey().length())) + "..." : "NULL"));
+
+        boolean needGen = user.getIdentityKey() == null || user.getIdentityKey().isEmpty() ||
+                          user.getSignedPreKey() == null || user.getSignedPreKey().isEmpty() ||
+                          user.getOneTimePreKeys() == null || user.getOneTimePreKeys().isEmpty();
+
+        if (needGen) {
+            System.out.println("[UserService-GET] Keys are missing, AUTO-GENERATING new keys...");
+            try {
+                // identityKey (ECDH) - используем кривую P-256 (secp256r1) для совместимости с Web Crypto API
+                KeyPairGenerator kpg = KeyPairGenerator.getInstance("EC");
+                ECGenParameterSpec ecSpec = new ECGenParameterSpec("secp256r1");
+                kpg.initialize(ecSpec);
+                KeyPair identityKeyPair = kpg.generateKeyPair();
+                java.security.interfaces.ECPublicKey ecPub = (java.security.interfaces.ECPublicKey) identityKeyPair.getPublic();
+                java.security.spec.ECPoint w = ecPub.getW();
+                byte[] x = w.getAffineX().toByteArray();
+                byte[] y = w.getAffineY().toByteArray();
+                if (x.length > 32) x = java.util.Arrays.copyOfRange(x, x.length - 32, x.length);
+                if (x.length < 32) {
+                    byte[] tmp = new byte[32];
+                    System.arraycopy(x, 0, tmp, 32 - x.length, x.length);
+                    x = tmp;
+                }
+                if (y.length > 32) y = java.util.Arrays.copyOfRange(y, y.length - 32, y.length);
+                if (y.length < 32) {
+                    byte[] tmp = new byte[32];
+                    System.arraycopy(y, 0, tmp, 32 - y.length, y.length);
+                    y = tmp;
+                }
+                byte[] uncompressed = new byte[65];
+                uncompressed[0] = 0x04;
+                System.arraycopy(x, 0, uncompressed, 1, 32);
+                System.arraycopy(y, 0, uncompressed, 33, 32);
+                String identityKeyPubRaw = Base64.getEncoder().encodeToString(uncompressed);
+                // signedPreKey
+                KeyPair signedPreKeyPair = kpg.generateKeyPair();
+                java.security.interfaces.ECPublicKey ecSignedPub = (java.security.interfaces.ECPublicKey) signedPreKeyPair.getPublic();
+                java.security.spec.ECPoint w2 = ecSignedPub.getW();
+                byte[] x2 = w2.getAffineX().toByteArray();
+                byte[] y2 = w2.getAffineY().toByteArray();
+                if (x2.length > 32) x2 = java.util.Arrays.copyOfRange(x2, x2.length - 32, x2.length);
+                if (x2.length < 32) {
+                    byte[] tmp = new byte[32];
+                    System.arraycopy(x2, 0, tmp, 32 - x2.length, x2.length);
+                    x2 = tmp;
+                }
+                if (y2.length > 32) y2 = java.util.Arrays.copyOfRange(y2, y2.length - 32, y2.length);
+                if (y2.length < 32) {
+                    byte[] tmp = new byte[32];
+                    System.arraycopy(y2, 0, tmp, 32 - y2.length, y2.length);
+                    y2 = tmp;
+                }
+                byte[] uncompressed2 = new byte[65];
+                uncompressed2[0] = 0x04;
+                System.arraycopy(x2, 0, uncompressed2, 1, 32);
+                System.arraycopy(y2, 0, uncompressed2, 33, 32);
+                String signedPreKeyPubRaw = Base64.getEncoder().encodeToString(uncompressed2);
+                // oneTimePreKeys
+                StringBuilder oneTimePreKeysJson = new StringBuilder("[");
+                for (int i = 0; i < 5; i++) {
+                    KeyPair oneTimePreKeyPair = kpg.generateKeyPair();
+                    java.security.interfaces.ECPublicKey ecOneTimePub = (java.security.interfaces.ECPublicKey) oneTimePreKeyPair.getPublic();
+                    java.security.spec.ECPoint w3 = ecOneTimePub.getW();
+                    byte[] x3 = w3.getAffineX().toByteArray();
+                    byte[] y3 = w3.getAffineY().toByteArray();
+                    if (x3.length > 32) x3 = java.util.Arrays.copyOfRange(x3, x3.length - 32, x3.length);
+                    if (x3.length < 32) {
+                        byte[] tmp = new byte[32];
+                        System.arraycopy(x3, 0, tmp, 32 - x3.length, x3.length);
+                        x3 = tmp;
+                    }
+                    if (y3.length > 32) y3 = java.util.Arrays.copyOfRange(y3, y3.length - 32, y3.length);
+                    if (y3.length < 32) {
+                        byte[] tmp = new byte[32];
+                        System.arraycopy(y3, 0, tmp, 32 - y3.length, y3.length);
+                        y3 = tmp;
+                    }
+                    byte[] uncompressed3 = new byte[65];
+                    uncompressed3[0] = 0x04;
+                    System.arraycopy(x3, 0, uncompressed3, 1, 32);
+                    System.arraycopy(y3, 0, uncompressed3, 33, 32);
+                    String oneTimePreKeyPubRaw = Base64.getEncoder().encodeToString(uncompressed3);
+                    oneTimePreKeysJson.append('"').append(oneTimePreKeyPubRaw).append('"');
+                    if (i < 4) oneTimePreKeysJson.append(',');
+                }
+                oneTimePreKeysJson.append("]");
+                // Генерация подписи signedPreKey приватным ключом identityKey
+                Signature ecdsaSign = Signature.getInstance("SHA256withECDSA");
+                ecdsaSign.initSign(identityKeyPair.getPrivate());
+                ecdsaSign.update(signedPreKeyPair.getPublic().getEncoded());
+                byte[] signatureBytes = ecdsaSign.sign();
+                String signedPreKeySignature = Base64.getEncoder().encodeToString(signatureBytes);
+                // Сохраняем ключи и подпись
+                user.setIdentityKey(identityKeyPubRaw);
+                user.setSignedPreKey(signedPreKeyPubRaw);
+                user.setOneTimePreKeys(oneTimePreKeysJson.toString());
+                user.setSignedPreKeySignature(signedPreKeySignature);
+                user.setPublicKey(identityKeyPubRaw);
+                userRepository.save(user);
+                System.out.println("[UserService-GET] ✓ Auto-generated and saved new keys");
+            } catch (Exception e) {
+                throw new RuntimeException("Ошибка генерации ключей X3DH", e);
+            }
+        } else {
+            System.out.println("[UserService-GET] ✓ Returning EXISTING keys from DB");
+        }
+
+        Map<String, String> bundle = new HashMap<>();
+        bundle.put("identityKey", user.getIdentityKey());
+        bundle.put("signedPreKey", user.getSignedPreKey());
+        bundle.put("oneTimePreKeys", user.getOneTimePreKeys());
+        bundle.put("publicKey", user.getPublicKey());
+
+        System.out.println("[UserService-GET] Returning bundle for user " + userId + ": identityKey=" +
+            (user.getIdentityKey() != null ? user.getIdentityKey().substring(0, Math.min(30, user.getIdentityKey().length())) + "..." : "NULL"));
+
+        return bundle;
+    }
+
+    /**
+     * Получить X3DH prekey bundle пользователя в бинарном виде (JSON -> byte[])
+     */
+    @Transactional
+    public byte[] getPreKeyBundleBinary(Long userId) {
+        Map<String, String> bundle = getPreKeyBundle(userId);
+        if (bundle == null || bundle.isEmpty()) return new byte[0];
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String json = mapper.writeValueAsString(bundle);
+            return json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // Логирование ошибки
+            return new byte[0];
+        }
+    }
+
+    /**
+     * Получить PreKeyBundleProtocol для Double Ratchet
+     */
+    @Transactional
+    public Map<String, Object> getPreKeyBundleProtocol(Long userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        Map<String, Object> bundle = new HashMap<>();
+        bundle.put("userId", user.getId());
+        bundle.put("identityKey", user.getIdentityKey());
+        bundle.put("signedPreKey", user.getSignedPreKey());
+        bundle.put("signedPreKeySignature", user.getSignedPreKeySignature());
+        // Преобразуем oneTimePreKeys из строки JSON в массив
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            List<String> oneTimePreKeysList = mapper.readValue(user.getOneTimePreKeys(), List.class);
+            bundle.put("oneTimePreKeys", oneTimePreKeysList);
+        } catch (Exception e) {
+            bundle.put("oneTimePreKeys", new String[]{});
+        }
+        bundle.put("publicKey", user.getPublicKey());
+
+        return bundle;
+    }
+
+    /**
+     * Генерировать и сохранить X3DH prekey bundle пользователя
+     */
+    public Map<String, String> generateAndSavePreKeyBundle(Long userId) {
+        // Принудительно генерируем новые ключи, не используем getPreKeyBundle
+        try {
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance("EC");
+            ECGenParameterSpec ecSpec = new ECGenParameterSpec("secp256r1");
+            kpg.initialize(ecSpec);
+            KeyPair identityKeyPair = kpg.generateKeyPair();
+            java.security.interfaces.ECPublicKey ecPub = (java.security.interfaces.ECPublicKey) identityKeyPair.getPublic();
+            java.security.spec.ECPoint w = ecPub.getW();
+            byte[] x = w.getAffineX().toByteArray();
+            byte[] y = w.getAffineY().toByteArray();
+            if (x.length > 32) x = java.util.Arrays.copyOfRange(x, x.length - 32, x.length);
+            if (x.length < 32) {
+                byte[] tmp = new byte[32];
+                System.arraycopy(x, 0, tmp, 32 - x.length, x.length);
+                x = tmp;
+            }
+            if (y.length > 32) y = java.util.Arrays.copyOfRange(y, y.length - 32, y.length);
+            if (y.length < 32) {
+                byte[] tmp = new byte[32];
+                System.arraycopy(y, 0, tmp, 32 - y.length, y.length);
+                y = tmp;
+            }
+            byte[] uncompressed = new byte[65];
+            uncompressed[0] = 0x04;
+            System.arraycopy(x, 0, uncompressed, 1, 32);
+            System.arraycopy(y, 0, uncompressed, 33, 32);
+            String identityKeyPubRaw = Base64.getEncoder().encodeToString(uncompressed);
+            // signedPreKey
+            KeyPair signedPreKeyPair = kpg.generateKeyPair();
+            java.security.interfaces.ECPublicKey ecSignedPub = (java.security.interfaces.ECPublicKey) signedPreKeyPair.getPublic();
+            java.security.spec.ECPoint w2 = ecSignedPub.getW();
+            byte[] x2 = w2.getAffineX().toByteArray();
+            byte[] y2 = w2.getAffineY().toByteArray();
+            if (x2.length > 32) x2 = java.util.Arrays.copyOfRange(x2, x2.length - 32, x2.length);
+            if (x2.length < 32) {
+                byte[] tmp = new byte[32];
+                System.arraycopy(x2, 0, tmp, 32 - x2.length, x2.length);
+                x2 = tmp;
+            }
+            if (y2.length > 32) y2 = java.util.Arrays.copyOfRange(y2, y2.length - 32, y2.length);
+            if (y2.length < 32) {
+                byte[] tmp = new byte[32];
+                System.arraycopy(y2, 0, tmp, 32 - y2.length, y2.length);
+                y2 = tmp;
+            }
+            byte[] uncompressed2 = new byte[65];
+            uncompressed2[0] = 0x04;
+            System.arraycopy(x2, 0, uncompressed2, 1, 32);
+            System.arraycopy(y2, 0, uncompressed2, 33, 32);
+            String signedPreKeyPubRaw = Base64.getEncoder().encodeToString(uncompressed2);
+            // oneTimePreKeys
+            StringBuilder oneTimePreKeysJson = new StringBuilder("[");
+            for (int i = 0; i < 5; i++) {
+                KeyPair oneTimePreKeyPair = kpg.generateKeyPair();
+                java.security.interfaces.ECPublicKey ecOneTimePub = (java.security.interfaces.ECPublicKey) oneTimePreKeyPair.getPublic();
+                java.security.spec.ECPoint w3 = ecOneTimePub.getW();
+                byte[] x3 = w3.getAffineX().toByteArray();
+                byte[] y3 = w3.getAffineY().toByteArray();
+                if (x3.length > 32) x3 = java.util.Arrays.copyOfRange(x3, x3.length - 32, x3.length);
+                if (x3.length < 32) {
+                    byte[] tmp = new byte[32];
+                    System.arraycopy(x3, 0, tmp, 32 - x3.length, x3.length);
+                    x3 = tmp;
+                }
+                if (y3.length > 32) y3 = java.util.Arrays.copyOfRange(y3, y3.length - 32, y3.length);
+                if (y3.length < 32) {
+                    byte[] tmp = new byte[32];
+                    System.arraycopy(y3, 0, tmp, 32 - y3.length, y3.length);
+                    y3 = tmp;
+                }
+                byte[] uncompressed3 = new byte[65];
+                uncompressed3[0] = 0x04;
+                System.arraycopy(x3, 0, uncompressed3, 1, 32);
+                System.arraycopy(y3, 0, uncompressed3, 33, 32);
+                String oneTimePreKeyPubRaw = Base64.getEncoder().encodeToString(uncompressed3);
+                oneTimePreKeysJson.append('"').append(oneTimePreKeyPubRaw).append('"');
+                if (i < 4) oneTimePreKeysJson.append(',');
+            }
+            oneTimePreKeysJson.append("]");
+            // Генерация подписи signedPreKey приватным ключом identityKey
+            Signature ecdsaSign = Signature.getInstance("SHA256withECDSA");
+            ecdsaSign.initSign(identityKeyPair.getPrivate());
+            ecdsaSign.update(signedPreKeyPair.getPublic().getEncoded());
+            byte[] signatureBytes = ecdsaSign.sign();
+            String signedPreKeySignature = Base64.getEncoder().encodeToString(signatureBytes);
+            // Сохраняем ключи и подпись
+            User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+            user.setIdentityKey(identityKeyPubRaw);
+            user.setSignedPreKey(signedPreKeyPubRaw);
+            user.setOneTimePreKeys(oneTimePreKeysJson.toString());
+            user.setSignedPreKeySignature(signedPreKeySignature);
+            user.setPublicKey(identityKeyPubRaw);
+            userRepository.save(user);
+            Map<String, String> bundle = new HashMap<>();
+            bundle.put("identityKey", identityKeyPubRaw);
+            bundle.put("signedPreKey", signedPreKeyPubRaw);
+            bundle.put("oneTimePreKeys", oneTimePreKeysJson.toString());
+            bundle.put("signedPreKeySignature", signedPreKeySignature);
+            bundle.put("publicKey", identityKeyPubRaw);
+            return bundle;
+        } catch (Exception e) {
+            throw new RuntimeException("Ошибка генерации ключей X3DH", e);
+        }
     }
 }

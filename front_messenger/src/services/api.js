@@ -3,7 +3,7 @@ import { ErrorHandler } from '../utils/errorHandler';
 
 // URL конфигурация
 export const CHAT_SERVER_URL = 'ws://localhost:8083/ws';
-export const CHAT_SERVER_URL_DIRECT = 'ws://localhost:8080/ws';
+export const CHAT_SERVER_URL_DIRECT = 'ws://localhost:8083/ws';
 
 // Создаем основной API клиент через Gateway
 const api = axios.create({
@@ -44,7 +44,7 @@ api.interceptors.response.use(
 
 // Специфичные API клиенты для разных сервисов
 export const authApi = axios.create({
-  baseURL: 'http://localhost:8081', // Authorization Service
+  baseURL: 'http://localhost:8083', // Gateway
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -52,7 +52,7 @@ export const authApi = axios.create({
 });
 
 export const chatApi = axios.create({
-  baseURL: 'http://localhost:8083', // Изменяем с 8082 на 8083 (Gateway)
+  baseURL: 'http://localhost:8083', // Gateway
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -60,7 +60,7 @@ export const chatApi = axios.create({
 });
 
 export const userApi = axios.create({
-  baseURL: 'http://localhost:8083', // Изменяем с 8082 на 8083 (Gateway)
+  baseURL: 'http://localhost:8083', // Gateway
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -68,7 +68,7 @@ export const userApi = axios.create({
 });
 
 export const messageApi = axios.create({
-  baseURL: 'http://localhost:8083', // Изменяем с 8082 на 8083 (Gateway)
+  baseURL: 'http://localhost:8083', // Gateway
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -107,8 +107,6 @@ export const gatewayApi = axios.create({
   );
 });
 
-// authApi не должен иметь перехватчик 401, так как он используется для логина
-// Но добавим перехватчик запросов для совместимости (хотя токен обычно не нужен для логина)
 authApi.interceptors.request.use(
   (config) => {
     // Для authApi обычно токен не нужен, но добавим для совместимости
@@ -183,5 +181,4 @@ export const validateToken = async (token) => {
   }
 };
 
-// Экспортируем основной API клиент как default
 export default api;

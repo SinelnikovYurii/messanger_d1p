@@ -43,19 +43,19 @@ public class MessageKafkaListener {
             // Проверяем тип события
             String eventType = (String) messageData.get("type");
 
-            // ИСПРАВЛЕНИЕ: Игнорируем события MESSAGE_READ - они обрабатываются в MessageService
+
             if ("MESSAGE_READ".equals(eventType)) {
                 log.info("[KAFKA] Received MESSAGE_READ event - skipping (handled by MessageService)");
                 return;
             }
 
-            // ИСПРАВЛЕНИЕ: Игнорируем события MESSAGE_UPDATE
+
             if ("MESSAGE_UPDATE".equals(eventType)) {
                 log.info("[KAFKA] Received MESSAGE_UPDATE event - skipping (already processed)");
                 return;
             }
 
-            // ИСПРАВЛЕНИЕ: Игнорируем события CHAT_MESSAGE - это уведомление о сообщении, которое УЖЕ сохранено в БД
+
             if ("CHAT_MESSAGE".equals(eventType)) {
                 log.info("[KAFKA] Received CHAT_MESSAGE notification - message already saved in DB, skipping");
                 return;
@@ -67,8 +67,23 @@ public class MessageKafkaListener {
             String content = (String) messageData.get("content");
             String messageType = (String) messageData.get("messageType");
 
-            log.info("[DB] Saving message to database - senderId: {}, chatId: {}, content: '{}'",
-                    senderId, chatId, content);
+            // ВАЛИДАЦИЯ E2EE: Проверяем, что сообщение зашифровано
+            boolean isCiphertext = false;
+            try {
+                Map<String, Object> contentJson = objectMapper.readValue(content, Map.class);
+                isCiphertext = contentJson.containsKey("iv") && contentJson.containsKey("ciphertext");
+            } catch (Exception e) {
+                log.warn("[E2EE] Message content is not valid JSON, rejecting: {}", content);
+            }
+
+            if (!isCiphertext) {
+                log.error("[E2EE] SECURITY VIOLATION: Unencrypted message rejected! Content: {}", content);
+                throw new RuntimeException("Message must be encrypted (E2EE). Message rejected.");
+            }
+
+            log.info("[E2EE] Message validation passed - encrypted content detected");
+            log.info("[DB] Saving encrypted message to database - senderId: {}, chatId: {}",
+                    senderId, chatId);
 
             // Проверяем существование чата и пользователя
             Chat chat = chatRepository.findById(chatId)
@@ -77,9 +92,9 @@ public class MessageKafkaListener {
             User sender = userRepository.findById(senderId)
                     .orElseThrow(() -> new RuntimeException("User not found: " + senderId));
 
-            // Создаем и сохраняем сообщение
+            // Создаем и сохраняем сообщение (ЗАШИФРОВАННОЕ)
             Message message = new Message();
-            message.setContent(content);
+            message.setContent(content);  // Сохраняем зашифрованный JSON как строку
             message.setMessageType(Message.MessageType.valueOf(messageType));
             message.setChat(chat);
             message.setSender(sender);

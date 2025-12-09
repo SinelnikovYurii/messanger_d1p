@@ -9,14 +9,20 @@ export default defineConfig({
     proxy: {
       // Проксирование HTTP API
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8083',
         changeOrigin: true,
         secure: false,
       },
       // Проксирование WebSocket (сообщения)
       '/ws': {
-        target: 'ws://localhost:8080',
+        target: 'ws://localhost:8083',
         ws: true,
+        changeOrigin: true,
+        secure: false,
+      },
+      // Проксирование авторизации
+      '/auth': {
+        target: 'http://localhost:8083',
         changeOrigin: true,
         secure: false,
       },

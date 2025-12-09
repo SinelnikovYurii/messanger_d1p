@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "2key-ratchet": "^1.0.18",
     "ws": "^8.18.3"
   }
 }

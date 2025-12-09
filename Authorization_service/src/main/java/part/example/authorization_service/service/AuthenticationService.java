@@ -11,6 +11,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
 import part.example.authorization_service.DTO.AuthResponse;
 import part.example.authorization_service.DTO.LoginRequest;
 import part.example.authorization_service.DTO.RegisterRequest;
@@ -34,36 +35,61 @@ public class AuthenticationService {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private WebClient.Builder webClientBuilder;
+
     public ResponseEntity<?> register(RegisterRequest request) {
         try {
-
+            System.out.println("[REGISTER] Запрос: " + request);
             if (userRepository.findByUsername(request.getUsername()).isPresent()) {
+                System.out.println("[REGISTER] Пользователь с таким именем уже существует: " + request.getUsername());
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "Пользователь с таким именем уже существует"));
             }
-
-
+            if (request.getUsername() == null || request.getUsername().isEmpty() ||
+                request.getPassword() == null || request.getPassword().isEmpty() ||
+                request.getEmail() == null || request.getEmail().isEmpty()) {
+                System.out.println("[REGISTER] Не все обязательные поля заполнены: " + request);
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "Все обязательные поля должны быть заполнены"));
+            }
             User user = new User();
             user.setUsername(request.getUsername());
             user.setEmail(request.getEmail());
             user.setFirstName(request.getFirstName());
             user.setLastName(request.getLastName());
-
-
             String encodedPassword = passwordEncoder.encode(request.getPassword());
             user.setPassword(encodedPassword);
-
             User savedUser = userRepository.save(user);
-
-
+            System.out.println("[REGISTER] Пользователь сохранён: " + savedUser.getId());
             String token = jwtUtil.generateToken(savedUser);
-
+            // --- Вызов core-api-service для генерации prekey bundle ---
+            String coreApiUrl = "http://localhost:8083/api/users/" + savedUser.getId() + "/prekey-bundle";
+            System.out.println("[REGISTER] Вызов core-api-service: " + coreApiUrl);
+            webClientBuilder.build()
+                .post()
+                .uri(coreApiUrl)
+                .header("Authorization", "Bearer " + token)
+                .bodyValue(Map.of(
+                    "identityKey", "",
+                    "signedPreKey", "",
+                    "oneTimePreKeys", "",
+                    "signedPreKeySignature", ""
+                ))
+                .retrieve()
+                .bodyToMono(String.class)
+                .doOnError(e -> System.err.println("Ошибка генерации prekey bundle: " + e.getMessage()))
+                .doOnSuccess(resp -> System.out.println("[REGISTER] Ответ core-api-service: " + resp))
+                .subscribe();
+            // --- конец вызова ---
+            System.out.println("[REGISTER] Регистрация завершена успешно");
             return ResponseEntity.ok(Map.of(
                     "token", token,
                     "userId", savedUser.getId(),
                     "message", "Пользователь успешно зарегистрирован"
             ));
         } catch (Exception e) {
+            System.err.println("[REGISTER] Ошибка при регистрации: " + e.getMessage());
             return ResponseEntity.status(500)
                     .body(Map.of("error", "Ошибка при регистрации: " + e.getMessage()));
         }

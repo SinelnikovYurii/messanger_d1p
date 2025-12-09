@@ -7,12 +7,10 @@ spring:
   cloud:
     gateway:
       globalcors:
-        cors-configurations:
+        corsConfigurations:
           '[/**]':
             allowedOrigins:
               - "http://localhost:3000"
-            allowedOriginPatterns:
-              - "http://localhost:*"
             allowedMethods:
               - GET
               - POST
@@ -33,7 +31,7 @@ spring:
           predicates:
             - Path=/auth/**
           filters:
-            - RewritePath=/auth/(?<path>.*), /$\{path}
+            - RewritePath=/auth/(?<path>.*), /${path}
 
         # Публичный доступ к аватаркам без JWT
         - id: avatars-public
@@ -52,13 +50,22 @@ spring:
             - AddRequestHeader=X-Gateway-Request, true
             - PreserveHostHeader
 
+        # Users/PreKey Bundle (Core API Service)
+        - id: users-prekey-bundle
+          uri: http://localhost:8082
+          predicates:
+            - Path=/users/*/prekey-bundle
+          filters:
+            - AddRequestHeader=X-Gateway-Request, true
+            - RewritePath=/users/(?<id>[^/]+)/prekey-bundle, /api/users/${id}/prekey-bundle
+
         # WebSocket Server
         - id: websocket-service
           uri: ws://localhost:8092
           predicates:
             - Path=/ws/**
           filters:
-            - RewritePath=/ws/(?<path>.*), /$\{path}
+            - RewritePath=/ws/(?<path>.*), /${path}
             - name: WebSocketTokenFilter
 
 # JWT конфигурация

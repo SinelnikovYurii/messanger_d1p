@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import userService from '../services/userService';
 import authService from '../services/authService';
+import chatService from '../services/chatService';
 import { ErrorHandler } from '../utils/errorHandler';
 
 const UserList = () => {
@@ -89,10 +90,30 @@ const UserList = () => {
             }
         }, 30000);
 
+        // Подписка на события онлайн/оффлайн через WebSocket
+        const handleUserStatus = (message) => {
+            if (message.type === 'USER_ONLINE' || message.type === 'USER_OFFLINE') {
+                setUsers(prevUsers => prevUsers.map(user =>
+                    user.id === message.userId ? { ...user, isOnline: message.type === 'USER_ONLINE' } : user
+                ));
+            }
+        };
+        const unsubscribeMessage = chatService.onMessage(handleUserStatus);
+
+        // Подписка на reconnect WebSocket
+        const reconnectHandler = {
+            onConnect: () => {
+                fetchUsers();
+            }
+        };
+        chatService.onConnection(reconnectHandler);
+
         return () => {
             isMounted = false;
             unsubscribeAuth();
             clearInterval(interval);
+            unsubscribeMessage();
+            chatService.removeConnectionHandler(reconnectHandler);
         };
     }, []);
 

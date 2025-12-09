@@ -243,4 +243,88 @@ public class UserController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
+
+    // Сохранить публичный ключ пользователя
+    @PostMapping("/{userId}/public-key")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<?> savePublicKey(@PathVariable Long userId, @RequestBody Map<String, String> body) {
+        String publicKey = body.get("publicKey");
+        if (publicKey == null || publicKey.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "publicKey is required"));
+        }
+        userService.savePublicKey(userId, publicKey);
+        return ResponseEntity.ok(Map.of("status", "ok"));
+    }
+
+    // Получить публичный ключ пользователя
+    @GetMapping("/{userId}/public-key")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<?> getPublicKey(@PathVariable Long userId) {
+        String publicKey = userService.getPublicKey(userId);
+        if (publicKey == null || publicKey.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of("publicKey", publicKey));
+    }
+
+    // Сохранить X3DH prekey bundle
+    @PostMapping("/{userId}/prekey-bundle")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<?> savePreKeyBundle(@PathVariable Long userId, @RequestBody Map<String, String> body) {
+        String identityKey = body.get("identityKey");
+        String signedPreKey = body.get("signedPreKey");
+        String oneTimePreKeys = body.get("oneTimePreKeys");
+        String signedPreKeySignature = body.get("signedPreKeySignature");
+
+        System.out.println("[PREKEY-SAVE] Received keys for user " + userId);
+        System.out.println("[PREKEY-SAVE] identityKey=" + (identityKey != null ? identityKey.substring(0, Math.min(30, identityKey.length())) : "null"));
+        System.out.println("[PREKEY-SAVE] signedPreKey=" + (signedPreKey != null ? signedPreKey.substring(0, Math.min(30, signedPreKey.length())) : "null"));
+
+        // Проверяем только обязательные ключи (signedPreKeySignature опциональна)
+        boolean needGen = identityKey == null || identityKey.isEmpty() ||
+                         signedPreKey == null || signedPreKey.isEmpty() ||
+                         oneTimePreKeys == null || oneTimePreKeys.isEmpty();
+
+        if (needGen) {
+            System.out.println("[PREKEY-SAVE] Missing required keys, auto-generating...");
+            Map<String, String> generated = userService.generateAndSavePreKeyBundle(userId);
+            return ResponseEntity.ok(Map.of("status", "generated", "bundle", generated));
+        }
+
+        System.out.println("[PREKEY-SAVE] Saving client-provided keys...");
+        userService.savePreKeyBundle(userId, identityKey, signedPreKey, oneTimePreKeys, signedPreKeySignature);
+        System.out.println("[PREKEY-SAVE] ✓ Keys saved successfully");
+
+        return ResponseEntity.ok(Map.of("status", "ok"));
+    }
+
+    // Получить X3DH prekey bundle
+    @GetMapping("/{userId}/prekey-bundle")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<?> getPreKeyBundle(@PathVariable Long userId) {
+        // Получаем prekey bundle из сервиса (должен быть объект с ключами)
+        Map<String, String> bundle = userService.getPreKeyBundle(userId);
+        if (bundle == null || bundle.isEmpty() ||
+            bundle.get("identityKey") == null || bundle.get("identityKey").isEmpty() ||
+            bundle.get("signedPreKey") == null || bundle.get("signedPreKey").isEmpty() ||
+            bundle.get("oneTimePreKeys") == null || bundle.get("oneTimePreKeys").isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(bundle);
+    }
+
+    // Получить PreKeyBundleProtocol для Double Ratchet
+    @GetMapping("/{userId}/prekey-bundle-protocol")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<?> getPreKeyBundleProtocol(@PathVariable Long userId) {
+        Map<String, Object> bundle = userService.getPreKeyBundleProtocol(userId);
+        Object oneTimePreKeysObj = bundle.get("oneTimePreKeys");
+        if (bundle == null || bundle.isEmpty() ||
+            bundle.get("identityKey") == null || ((String)bundle.get("identityKey")).isEmpty() ||
+            bundle.get("signedPreKey") == null || ((String)bundle.get("signedPreKey")).isEmpty() ||
+            oneTimePreKeysObj == null || !(oneTimePreKeysObj instanceof List) || ((List<?>)oneTimePreKeysObj).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(bundle);
+    }
 }

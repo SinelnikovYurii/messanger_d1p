@@ -6,7 +6,7 @@ class ChatService {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectInterval = 3000;
-        this.messageHandlers = [];
+        this.messageHandlers = new Set();
         this.connectionHandlers = [];
         this.chatEventHandlers = []; // Добавляем обработчики событий чата
         this.isAuthenticated = false;
@@ -15,118 +15,128 @@ class ChatService {
 
     connect(token) {
         return new Promise((resolve, reject) => {
+            // ИСПРАВЛЕНИЕ: Закрываем существующее соединение перед созданием нового
+            if (this.socket && this.socket.readyState !== WebSocket.CLOSED) {
+                console.log('[ChatService] Closing existing WebSocket before reconnect');
+                this.socket.close();
+                this.socket = null;
+            }
+
             this.currentToken = token;
             this.isAuthenticated = false;
 
-            // Подключаемся через Gateway на порту 8083
-            const wsUrl = `ws://localhost:8083/ws/chat?token=${token}`;
-            console.log('Connecting to WebSocket:', wsUrl);
-
-            this.socket = new WebSocket(wsUrl);
-
-            this.socket.onopen = () => {
-                console.log('WebSocket connected successfully');
-                this.isAuthenticated = true;
-                this.reconnectAttempts = 0;
-                this.connectionHandlers.forEach(handler => {
-                    if (handler.onConnect) handler.onConnect();
-                });
-                resolve(); // Сразу резолвим при успешном подключении
-            };
-
-            this.socket.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-                    console.log('Received WebSocket message:', message);
-
-                    // Обрабатываем различные типы сообщений
-                    if (message.type === 'AUTH_SUCCESS') {
-                        console.log('Authentication confirmed:', message);
-                        return; // Не передаем дальше
-                    } else if (message.type === 'SYSTEM_MESSAGE') {
-                        console.log('System message:', message.content);
-                        return; // Не передаем дальше
-                    } else if (message.type === 'MESSAGE_SENT') {
-                        console.log('Message sent confirmation:', message.content);
-                        return; // Не передаем дальше - это только подтверждение
-                    } else if (message.type === 'PONG') {
-                        console.log('Received pong');
-                        return; // Не передаем дальше
-                    } else if (message.type === 'ERROR') {
-                        console.error('WebSocket error:', message.content);
-                        this.connectionHandlers.forEach(handler => {
-                            if (handler.onError) handler.onError(new Error(message.content));
-                        });
-                        return;
-                    } else if (message.type === 'CHAT_EVENT') {
-                        // Обрабатываем события чата, отправленные через Kafka
-                        console.log('Chat event received:', message);
-                        this.chatEventHandlers.forEach(handler => handler(message));
-                        return;
-                    } else if (message.type === 'FRIEND_REQUEST_RECEIVED' ||
-                               message.type === 'FRIEND_REQUEST_SENT' ||
-                               message.type === 'FRIEND_REQUEST_ACCEPTED' ||
-                               message.type === 'FRIEND_REQUEST_REJECTED') {
-                        // Обрабатываем уведомления о друзьях
-                        console.log('Friend notification received:', message);
-                        this.messageHandlers.forEach(handler => handler(message));
-                        return;
-                    }
-
-                    // Передаем значимые сообщения обработчикам, включая события онлайн-статуса
-                    if (message.type === 'CHAT_MESSAGE' ||
-                        message.type === 'MESSAGE' ||
-                        message.type === 'MESSAGE_READ' ||
-                        message.type === 'USER_ONLINE' ||
-                        message.type === 'USER_OFFLINE') {
-                        this.messageHandlers.forEach(handler => handler(message));
-                    }
-                } catch (error) {
-                    console.error('Error parsing WebSocket message:', error);
-                    // Если не JSON, то передаем как текст
-                    const textMessage = {
-                        type: 'TEXT',
-                        content: event.data,
-                        timestamp: new Date().toISOString()
-                    };
-                    this.messageHandlers.forEach(handler => handler(textMessage));
-                }
-            };
-
-            this.socket.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                this.connectionHandlers.forEach(handler => {
-                    if (handler.onError) handler.onError(error);
-                });
-                if (!this.isAuthenticated) {
-                    reject(error);
-                }
-            };
-
-            this.socket.onclose = (event) => {
-                console.log('WebSocket connection closed', event);
-                this.isAuthenticated = false;
-                this.connectionHandlers.forEach(handler => {
-                    if (handler.onClose) handler.onClose(event);
-                });
-
-                // Автоматическое переподключение только если была успешная аутентификация
-                if (this.reconnectAttempts < this.maxReconnectAttempts && this.currentToken) {
-                    this.reconnectAttempts++;
-                    console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-                    setTimeout(() => {
-                        this.connect(this.currentToken).catch(() => {});
-                    }, this.reconnectInterval);
-                }
-            };
-
-            // Таймаут на случай если соединение зависнет
+            // Небольшая задержка перед новым соединением для корректного закрытия старого
             setTimeout(() => {
-                if (!this.isAuthenticated && this.socket && this.socket.readyState !== WebSocket.OPEN) {
-                    console.error('WebSocket connection timeout');
-                    reject(new Error('Connection timeout'));
-                }
-            }, 5000);
+                // Подключаемся через Gateway на порту 8083
+                const wsUrl = `ws://localhost:8083/ws/chat?token=${token}`;
+                console.log('Connecting to WebSocket:', wsUrl);
+
+                this.socket = new WebSocket(wsUrl);
+
+                this.socket.onopen = () => {
+                    console.log('WebSocket connected successfully');
+                    this.isAuthenticated = true;
+                    this.reconnectAttempts = 0;
+                    this.connectionHandlers.forEach(handler => {
+                        if (handler.onConnect) handler.onConnect();
+                    });
+                    resolve(); // Сразу резолвим при успешном подключении
+                };
+
+                this.socket.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        console.log('Received WebSocket message:', message);
+
+                        // Обрабатываем различные типы сообщений
+                        if (message.type === 'AUTH_SUCCESS') {
+                            console.log('Authentication confirmed:', message);
+                            return; // Не передаем дальше
+                        } else if (message.type === 'SYSTEM_MESSAGE') {
+                            console.log('System message:', message.content);
+                            return; // Не передаем дальше
+                        } else if (message.type === 'MESSAGE_SENT') {
+                            console.log('Message sent confirmation:', message.content);
+                            return; // Не передаем дальше - это только подтверждение
+                        } else if (message.type === 'PONG') {
+                            console.log('Received pong');
+                            return; // Не передаем дальше
+                        } else if (message.type === 'ERROR') {
+                            console.error('WebSocket error:', message.content);
+                            this.connectionHandlers.forEach(handler => {
+                                if (handler.onError) handler.onError(new Error(message.content));
+                            });
+                            return;
+                        } else if (message.type === 'CHAT_EVENT') {
+                            // Обрабатываем события чата, отправленные через Kafka
+                            console.log('Chat event received:', message);
+                            this.chatEventHandlers.forEach(handler => handler(message));
+                            return;
+                        } else if (message.type === 'FRIEND_REQUEST_RECEIVED' ||
+                                   message.type === 'FRIEND_REQUEST_SENT' ||
+                                   message.type === 'FRIEND_REQUEST_ACCEPTED' ||
+                                   message.type === 'FRIEND_REQUEST_REJECTED') {
+                            // Обрабатываем уведомления о друзьях
+                            console.log('Friend notification received:', message);
+                            this.messageHandlers.forEach(handler => handler(message));
+                            return;
+                        }
+
+                        // Передаем значимые сообщения обработчикам
+                        if (message.type === 'CHAT_MESSAGE' ||
+                            message.type === 'MESSAGE' ||
+                            message.type === 'MESSAGE_READ' ||
+                            message.type === 'USER_ONLINE' ||
+                            message.type === 'USER_OFFLINE') {
+                            this.messageHandlers.forEach(handler => handler(message));
+                        }
+                    } catch (error) {
+                        console.error('Error parsing WebSocket message:', error);
+                        // Если не JSON, то передаем как текст
+                        const textMessage = {
+                            type: 'TEXT',
+                            content: event.data,
+                            timestamp: new Date().toISOString()
+                        };
+                        this.messageHandlers.forEach(handler => handler(textMessage));
+                    }
+                };
+
+                this.socket.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    this.connectionHandlers.forEach(handler => {
+                        if (handler.onError) handler.onError(error);
+                    });
+                    if (!this.isAuthenticated) {
+                        reject(error);
+                    }
+                };
+
+                this.socket.onclose = (event) => {
+                    console.log('WebSocket connection closed', event);
+                    this.isAuthenticated = false;
+                    this.connectionHandlers.forEach(handler => {
+                        if (handler.onClose) handler.onClose(event);
+                    });
+
+                    // Автоматическое переподключение только если была успешная аутентификация
+                    if (this.reconnectAttempts < this.maxReconnectAttempts && this.currentToken) {
+                        this.reconnectAttempts++;
+                        console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+                        setTimeout(() => {
+                            this.connect(this.currentToken).catch(() => {});
+                        }, this.reconnectInterval);
+                    }
+                };
+
+                // Таймаут на случай если соединение зависнет
+                setTimeout(() => {
+                    if (!this.isAuthenticated && this.socket && this.socket.readyState !== WebSocket.OPEN) {
+                        console.error('WebSocket connection timeout');
+                        reject(new Error('Connection timeout'));
+                    }
+                }, 5000);
+            }, 100); // Задержка 100ms перед созданием нового соединения
         });
     }
 
@@ -187,7 +197,9 @@ class ChatService {
     }
 
     onMessage(handler) {
-        this.messageHandlers.push(handler);
+        if (!this.messageHandlers.has(handler)) {
+            this.messageHandlers.add(handler);
+        }
         // Возвращаем функцию для отписки
         return () => {
             this.removeMessageHandler(handler);
@@ -208,10 +220,7 @@ class ChatService {
     }
 
     removeMessageHandler(handler) {
-        const index = this.messageHandlers.indexOf(handler);
-        if (index > -1) {
-            this.messageHandlers.splice(index, 1);
-        }
+        this.messageHandlers.delete(handler);
     }
 
     removeConnectionHandler(handler) {

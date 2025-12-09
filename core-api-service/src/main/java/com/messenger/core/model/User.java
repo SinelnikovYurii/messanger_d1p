@@ -55,6 +55,21 @@ public class User {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "public_key", columnDefinition = "TEXT")
+    private String publicKey;
+
+    @Column(name = "identity_key", columnDefinition = "TEXT")
+    private String identityKey;
+
+    @Column(name = "signed_prekey", columnDefinition = "TEXT")
+    private String signedPreKey;
+
+    @Column(name = "signed_prekey_signature", columnDefinition = "TEXT")
+    private String signedPreKeySignature;
+
+    @Column(name = "one_time_prekeys", columnDefinition = "TEXT") // JSON-массив
+    private String oneTimePreKeys;
+
     // Чаты, в которых участвует пользователь
     @ManyToMany(mappedBy = "participants", fetch = FetchType.LAZY)
     @BatchSize(size = 16)

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi } from '../services/api';
+import { registerUserWithE2EEAndX3DH } from '../services/authService';
+import api from '../services/api';
 
 const RegisterForm = ({ setIsAuthenticated }) => {
     const [credentials, setCredentials] = useState({
@@ -23,14 +24,14 @@ const RegisterForm = ({ setIsAuthenticated }) => {
 
         try {
             const { confirmPassword, ...data } = credentials;
-            const response = await authApi.post('/auth/register', data);
+            const response = await api.post('/auth/register', data);
             if (response.status === 200) {
                 // После успешной регистрации просто перенаправляем на страницу логина
-                // без установки токена и флага аутентификации
                 navigate('/login');
+                return;
             }
         } catch (err) {
-            setError(err.response?.data?.message || 'Ошибка регистрации');
+            setError(err.response?.data?.error || 'Ошибка регистрации');
         }
     };
 

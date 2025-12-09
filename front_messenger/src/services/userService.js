@@ -1,4 +1,12 @@
 import api from './api';
+import {
+  generateKeyPair,
+  exportPublicKey,
+  importPublicKey,
+  deriveSessionKey,
+  encryptMessage,
+  decryptMessage
+} from '../utils/crypto';
 
 const userService = {
   // Поиск пользователей
@@ -34,29 +42,21 @@ const userService = {
 
   // Управление друзьями
   sendFriendRequest: async (userId) => {
-    const response = await api.post('/api/users/friends/request', { userId });
+    const response = await api.post('/api/friends/request', { userId });
     return response.data;
   },
 
   respondToFriendRequest: async (requestId, accept) => {
     console.log('userService: Отправка ответа на запрос дружбы:', { requestId, accept });
     try {
-      // Создаем объект запроса с необходимыми полями
       const payload = {
         requestId: requestId,
-        accept: accept    // Добавляем поле accept, которое ожидает бэкенд
+        accept: accept
       };
-
-      // Логируем точный payload
       console.log('userService: Payload для отправки:', JSON.stringify(payload));
-
-      // Логируем конфигурацию запроса перед отправкой
-      console.log('userService: URL запроса:', '/api/users/friends/respond');
+      console.log('userService: URL запроса:', '/api/friends/respond');
       console.log('userService: Метод запроса:', 'POST');
-
-      // Отправляем запрос
-      const response = await api.post('/api/users/friends/respond', payload);
-
+      const response = await api.post('/api/friends/respond', payload);
       console.log('userService: Успешный ответ от сервера:', response.data);
       return response.data;
     } catch (error) {
@@ -88,17 +88,17 @@ const userService = {
   },
 
   getIncomingFriendRequests: async () => {
-    const response = await api.get('/api/users/friends/incoming');
+    const response = await api.get('/api/friends/incoming');
     return response.data;
   },
 
   getOutgoingFriendRequests: async () => {
-    const response = await api.get('/api/users/friends/outgoing');
+    const response = await api.get('/api/friends/outgoing');
     return response.data;
   },
 
   removeFriend: async (friendId) => {
-    const response = await api.delete(`/api/users/friends/${friendId}`);
+    const response = await api.delete(`/api/friends/${friendId}`);
     return response.data;
   },
 
@@ -110,9 +110,43 @@ const userService = {
 
   // Получить всех пользователей (для совместимости)
   getAllUsers: async () => {
-    const response = await api.get('/api/users/all');
+    const currentUser = JSON.parse(localStorage.getItem('user'));
+    const userId = currentUser?.id;
+    const response = await api.get('/api/users/all', {
+      headers: {
+        ...(userId ? { 'x-user-id': userId } : {})
+      }
+    });
     return response.data;
-  }
+  },
+
+  // Сохранение публичного ключа пользователя на сервере
+  saveUserPublicKey: async (userId, publicKey) => {
+    return api.post(`/api/users/${userId}/public-key`, { publicKey });
+  },
+
+  // Получение публичного ключа другого пользователя
+  getUserPublicKey: async (userId) => {
+    const response = await api.get(`/api/users/${userId}/public-key`);
+    return response.data.publicKey;
+  },
+
+  // Сохранение X3DH prekey bundle пользователя на сервере
+  savePreKeyBundle: async (userId, identityKey, signedPreKey, oneTimePreKeys, signedPreKeySignature) => {
+    return api.post(`/api/users/${userId}/prekey-bundle`, { identityKey, signedPreKey, oneTimePreKeys, signedPreKeySignature });
+  },
+
+  // Получение X3DH prekey bundle другого пользователя
+  getPreKeyBundle: async (userId) => {
+    const response = await api.get(`/api/users/${userId}/prekey-bundle`);
+    return response.data; // JSON object
+  },
+
+  // Получение PreKeyBundleProtocol для Double Ratchet
+  getPreKeyBundleProtocol: async (userId) => {
+    const response = await api.get(`/api/users/${userId}/prekey-bundle-protocol`);
+    return response.data; // JSON object
+  },
 };
 
 export default userService;

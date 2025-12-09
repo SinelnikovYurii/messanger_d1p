@@ -1,7 +1,8 @@
 import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import chatService from '../services/chatService';
+import { encryptMessage } from '../utils/crypto';
 
-const FileUpload = forwardRef(({ chatId, onFileUploaded }, ref) => {
+const FileUpload = forwardRef(({ chatId, sessionKey, onFileUploaded }, ref) => {
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [selectedFile, setSelectedFile] = useState(null);
@@ -30,7 +31,29 @@ const FileUpload = forwardRef(({ chatId, onFileUploaded }, ref) => {
 
         try {
             setUploading(true);
-            const message = await chatService.uploadFile(selectedFile, chatId, caption || null);
+
+            // Проверяем готовность E2EE
+            if (!sessionKey) {
+                alert('Шифрование не готово. Подождите инициализации E2EE.');
+                setUploading(false);
+                return;
+            }
+
+            // Шифруем caption или имя файла для E2EE
+            let contentToEncrypt;
+            if (caption && caption.trim()) {
+                contentToEncrypt = caption.trim();
+            } else {
+                // Если caption отсутствует, шифруем имя файла
+                contentToEncrypt = selectedFile.name;
+            }
+
+            console.log('[E2EE] Encrypting file message with X3DH + AES-GCM');
+            const encrypted = await encryptMessage(sessionKey, contentToEncrypt);
+            const encryptedCaption = JSON.stringify(encrypted);
+            console.log('[E2EE] ✓ File message encrypted successfully');
+
+            const message = await chatService.uploadFile(selectedFile, chatId, encryptedCaption);
 
             // Уведомляем родительский компонент
             if (onFileUploaded) {

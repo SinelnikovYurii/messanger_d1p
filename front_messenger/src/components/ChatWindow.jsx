@@ -1,13 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import chatService from '../services/chatService';
-import authService from '../services/authService';
+import authService, { performX3DHHandshake } from '../services/authService';
+import userService from '../services/userService';
 import { ErrorHandler } from '../utils/errorHandler';
+import {
+  importPublicKey,
+  deriveSessionKey,
+  encryptMessage,
+  decryptMessage,
+  generateX3DHKeys
+} from '../utils/crypto';
+import { exportPrivateKey, importPrivateKeyFromFile } from '../utils/keyBackup';
+import { DoubleRatchetManager } from '../utils/DoubleRatchetManager';
 
 const ChatWindow = () => {
     const [newMessage, setNewMessage] = useState('');
     const [messages, setMessages] = useState([]);
     const [isConnected, setIsConnected] = useState(false);
     const [connectionError, setConnectionError] = useState(null);
+    const [sessionKey, setSessionKey] = useState(null);
+    const [partnerId, setPartnerId] = useState(null); // ID собеседника
+    const [keyStatus, setKeyStatus] = useState(''); // Статус ключа E2EE
+    const [x3dhKeys, setX3dhKeys] = useState(null);
+    const [ratchetManager] = useState(() => new DoubleRatchetManager());
+    const [ratchetReady, setRatchetReady] = useState(false);
     const messagesEndRef = useRef(null);
     const isMountedRef = useRef(true);
 
@@ -65,7 +81,7 @@ const ChatWindow = () => {
         };
 
         // Подписываемся на сообщения
-        const handleMessage = (message) => {
+        const handleMessage = async (message) => {
             console.log('ChatWindow: Received message:', message);
 
             // Получаем ID текущего пользователя
@@ -79,8 +95,17 @@ const ChatWindow = () => {
             }
 
             if (isMountedRef.current) {
-                console.log('ChatWindow: Adding message from other user:', message);
-                setMessages(prev => [...prev, message]);
+                try {
+                  // Дешифруем сообщение через Double Ratchet
+                  if (ratchetReady) {
+                    const decrypted = await ratchetManager.decrypt(partnerId, JSON.parse(message.content));
+                    setMessages(prev => [...prev, { ...message, content: decrypted }]);
+                  } else {
+                    setMessages(prev => [...prev, message]);
+                  }
+                } catch (e) {
+                  setMessages(prev => [...prev, { ...message, content: '[Ошибка дешифрования]' }]);
+                }
             }
         };
 
@@ -153,7 +178,89 @@ const ChatWindow = () => {
         };
     }, []);
 
-    const handleSendMessage = (e) => {
+    // Генерация X3DH ключей при инициализации чата
+    useEffect(() => {
+      async function setupX3DH() {
+        // Генерируем X3DH ключи для текущего пользователя (один раз)
+        const keys = await generateX3DHKeys();
+        setX3dhKeys(keys);
+      }
+      setupX3DH();
+    }, []);
+
+    // Установление сессионного ключа через X3DH handshake
+    useEffect(() => {
+      async function establishSessionKey() {
+        if (!partnerId || !x3dhKeys) return;
+        const session = await performX3DHHandshake(x3dhKeys, partnerId);
+        setSessionKey(session);
+      }
+      establishSessionKey();
+    }, [partnerId, x3dhKeys]);
+
+    // Получение и установка сессионного ключа при старте чата
+    useEffect(() => {
+      async function setupE2EE() {
+        // Получаем ID собеседника (например, из пропсов или выбранного чата)
+        if (!partnerId) return;
+        // Получаем публичный ключ собеседника
+        const partnerPublicKeyRaw = await userService.getUserPublicKey(partnerId);
+        const partnerPublicKey = await importPublicKey(partnerPublicKeyRaw);
+        // Получаем приватный ключ из localStorage
+        const privateKeyJwk = JSON.parse(localStorage.getItem('e2ee_privateKey'));
+        const privateKey = await window.crypto.subtle.importKey('jwk', privateKeyJwk, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
+        // Генерируем сессионный ключ
+        const session = await deriveSessionKey(privateKey, partnerPublicKey);
+        setSessionKey(session);
+      }
+      setupE2EE();
+    }, [partnerId]);
+
+    // Временная интеграция выбора собеседника для теста E2EE
+    useEffect(() => {
+      // Для теста: автоматически выбираем первого друга как собеседника
+      async function selectDefaultPartner() {
+        const friends = await userService.getFriends();
+        if (friends && friends.length > 0) {
+          setPartnerId(friends[0].id);
+        }
+      }
+      selectDefaultPartner();
+    }, []);
+
+    // Визуализация статуса E2EE и ключа
+    useEffect(() => {
+      async function checkKeyStatus() {
+        if (!partnerId) {
+          setKeyStatus('Нет собеседника');
+          return;
+        }
+        try {
+          const partnerPublicKeyRaw = await userService.getUserPublicKey(partnerId);
+          if (partnerPublicKeyRaw) {
+            setKeyStatus('Ключ получен, чат защищён (E2EE)');
+          } else {
+            setKeyStatus('Нет публичного ключа собеседника — чат не защищён!');
+          }
+        } catch {
+          setKeyStatus('Ошибка получения ключа — чат не защищён!');
+        }
+      }
+      checkKeyStatus();
+    }, [partnerId, sessionKey]);
+
+    // Инициализация Double Ratchet после X3DH
+    useEffect(() => {
+      async function setupDoubleRatchet() {
+        if (!partnerId || !sessionKey) return;
+        // sessionKey — ArrayBuffer, нужен для Double Ratchet
+        await ratchetManager.initSession(partnerId, sessionKey, true); // true — инициатор (Alice)
+        setRatchetReady(true);
+      }
+      setupDoubleRatchet();
+    }, [partnerId, sessionKey]);
+
+    const handleSendMessage = async (e) => {
         e.preventDefault();
 
         if (!newMessage.trim()) {
@@ -165,17 +272,19 @@ const ChatWindow = () => {
             return;
         }
 
-        const currentUser = authService.getUserData();
+        if (!ratchetReady) {
+            setConnectionError('Double Ratchet не готов');
+            return;
+        }
 
         try {
-            // Используем sendChatMessage с chatId для правильной работы с исправленным SessionManager
-            chatService.sendChatMessage(newMessage.trim(), 1);
-
-            // НЕ добавляем сообщение в локальный стейт - оно придет через WebSocket от других участников
+            // Шифруем сообщение через Double Ratchet
+            const encrypted = await ratchetManager.encrypt(partnerId, newMessage.trim());
+            chatService.sendChatMessage(JSON.stringify(encrypted), 1);
             setNewMessage('');
             setConnectionError(null);
         } catch (error) {
-            console.error('ChatWindow: Error sending message:', error);
+            console.error('ChatWindow: Error sending ratchet message:', error);
             const errorMessage = ErrorHandler.getErrorMessage(error);
             setConnectionError(`Ошибка отправки: ${errorMessage}`);
         }
@@ -194,6 +303,11 @@ const ChatWindow = () => {
                     {connectionError && (
                         <span className="text-xs text-red-500 ml-2">({connectionError})</span>
                     )}
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                    <span className={keyStatus.includes('защищён') ? 'text-green-600' : 'text-red-600'}>
+                        {keyStatus}
+                    </span>
                 </div>
             </div>
 
@@ -264,6 +378,72 @@ const ChatWindow = () => {
                         {connectionError}
                     </div>
                 )}
+            </div>
+
+            {/* UI для экспорта/импорта приватного ключа */}
+            <div className="bg-white border-t p-4 flex flex-col gap-2">
+              <form onSubmit={handleSendMessage} className="flex space-x-2">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder={isConnected ? "Введите сообщение..." : "Ожидание подключения..."}
+                  className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                  disabled={!isConnected}
+                  maxLength={1000}
+                />
+                <button
+                  type="submit"
+                  disabled={!newMessage.trim() || !isConnected}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Отправить
+                </button>
+              </form>
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="button"
+                  className="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 text-xs"
+                  onClick={async () => {
+                    try {
+                      const url = await exportPrivateKey();
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'e2ee_private_key.json';
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    } catch (e) {
+                      alert('Ошибка экспорта ключа: ' + e.message);
+                    }
+                  }}
+                >
+                  Экспортировать ключ
+                </button>
+                <label className="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 text-xs cursor-pointer">
+                  Импортировать ключ
+                  <input
+                    type="file"
+                    accept="application/json"
+                    style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        try {
+                          await importPrivateKeyFromFile(file);
+                          alert('Ключ успешно импортирован!');
+                        } catch (e) {
+                          alert('Ошибка импорта ключа: ' + e.message);
+                        }
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+              {connectionError && (
+                <div className="text-xs text-red-500 mt-1">
+                  {connectionError}
+                </div>
+              )}
             </div>
         </div>
     );

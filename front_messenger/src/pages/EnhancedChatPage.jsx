@@ -61,29 +61,35 @@ const ChatPage = () => {
 
   // Инициализация WebSocket соединения
   useEffect(() => {
+    let isActive = true; // Флаг для отслеживания размонтирования компонента
+
     const initializeWebSocket = async () => {
       if (!token) {
         console.log('No token available for WebSocket connection');
-        setIsInitializing(false);
+        if (isActive) setIsInitializing(false);
         return;
       }
 
       try {
         console.log('Initializing WebSocket connection...');
-        setIsInitializing(true);
+        if (isActive) setIsInitializing(true);
         await chatService.connect(token);
-        setIsWebSocketConnected(true);
-        setConnectionError(null);
-        console.log('WebSocket connected successfully');
+        if (isActive) {
+          setIsWebSocketConnected(true);
+          setConnectionError(null);
+          console.log('WebSocket connected successfully');
 
-        // ИСПРАВЛЕНИЕ: Загружаем чаты только после успешного подключения WebSocket
-        await loadChats();
+          // Загружаем чаты только после успешного подключения WebSocket
+          await loadChats();
+        }
       } catch (error) {
         console.error('WebSocket connection failed:', error);
-        setIsWebSocketConnected(false);
-        setConnectionError('Ошибка подключения к серверу сообщений');
+        if (isActive) {
+          setIsWebSocketConnected(false);
+          setConnectionError('Ошибка подключения к серверу сообщений');
+        }
       } finally {
-        setIsInitializing(false);
+        if (isActive) setIsInitializing(false);
       }
     };
 
@@ -91,33 +97,38 @@ const ChatPage = () => {
     const connectionHandlers = {
       onConnect: () => {
         console.log('WebSocket reconnected');
-        setIsWebSocketConnected(true);
-        setConnectionError(null);
+        if (isActive) {
+          setIsWebSocketConnected(true);
+          setConnectionError(null);
+        }
       },
       onError: (error) => {
         console.error('WebSocket error:', error);
-        setIsWebSocketConnected(false);
-        setConnectionError('Ошибка соединения с сервером');
+        if (isActive) {
+          setIsWebSocketConnected(false);
+          setConnectionError('Ошибка соединения с сервером');
+        }
       },
       onClose: (event) => {
         console.log('WebSocket connection closed', event);
-        setIsWebSocketConnected(false);
-        if (event.code !== 1000) {
-          setConnectionError('Соединение потеряно, переподключение...');
+        if (isActive) {
+          setIsWebSocketConnected(false);
+          if (event.code !== 1000) {
+            setConnectionError('Соединение потеряно, переподключение...');
+          }
         }
       }
     };
 
     chatService.onConnection(connectionHandlers);
-
-    // Инициализируем WebSocket
     initializeWebSocket();
 
-    // Очистка при размонтировании
+    // CLEANUP: Очистка при размонтировании
     return () => {
+      isActive = false; // Устанавливаем флаг, что компонент размонтирован
       console.log('Cleaning up WebSocket connection');
       chatService.removeConnectionHandler(connectionHandlers);
-      chatService.disconnect();
+      // Не разрываем соединение при переходе между чатами
       setIsWebSocketConnected(false);
     };
   }, [token]);
@@ -148,7 +159,13 @@ const ChatPage = () => {
         // Извлекаем данные сообщения из правильной структуры
         const senderId = message.senderId || message.userId;
         const senderUsername = message.senderUsername || message.username || 'Пользователь';
-        const content = message.content || '';
+        let content = message.content || '';
+
+        // Если content - объект (зашифрованное сообщение), преобразуем в строку
+        if (typeof content === 'object' && content !== null) {
+          content = JSON.stringify(content);
+        }
+
         const timestamp = message.timestamp || message.createdAt || new Date().toISOString();
         const messageType = message.messageType || 'TEXT';
         const fileUrl = message.fileUrl;
@@ -256,7 +273,7 @@ const ChatPage = () => {
     };
   }, [isWebSocketConnected, user?.id, selectedChat?.id]);
 
-  // НОВОЕ: Сбрасываем счетчик непрочитанных при выборе чата
+  // Сбрасываем счетчик непрочитанных при выборе чата
   useEffect(() => {
     if (selectedChat) {
       setChats(prevChats =>
@@ -289,7 +306,6 @@ const ChatPage = () => {
         setChats([chatOrUser, ...chats]);
       }
     } else {
-      // Это пользователь, создаем приватный чат
       // Логика уже обработана в UserSearchModal
     }
   };
@@ -356,7 +372,20 @@ const ChatPage = () => {
 
     // Обработка текстовых сообщений
     const senderName = message.sender?.username || 'Неизвестный';
-    const content = message.content || '';
+    let content = message.content || '';
+
+    // Проверяем, зашифровано ли сообщение
+    if (typeof content === 'string' && (content.includes('"iv"') || content.includes('"ciphertext"'))) {
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.iv && parsed.ciphertext) {
+          // Это зашифрованное сообщение
+          return `${senderName}:Зашифрованное сообщение`;
+        }
+      } catch (e) {
+        // Не JSON, показываем как есть
+      }
+    }
 
     if (content.length > 30) {
       return `${senderName}: ${content.substring(0, 30)}...`;

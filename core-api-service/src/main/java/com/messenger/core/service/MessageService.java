@@ -58,8 +58,16 @@ public class MessageService {
         if (content == null || content.trim().isEmpty()) {
             throw new IllegalArgumentException("Текст сообщения не может быть пустым");
         }
-        if (content.length() > 10000) {
-            throw new IllegalArgumentException("Текст сообщения слишком длинный");
+        // Проверяем, что сообщение — это JSON с полями iv и ciphertext (E2EE)
+        boolean isCiphertext = false;
+        try {
+            var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(content);
+            isCiphertext = json.has("iv") && json.has("ciphertext");
+        } catch (Exception e) {
+            isCiphertext = false;
+        }
+        if (!isCiphertext) {
+            throw new IllegalArgumentException("Сообщение должно быть зашифровано (E2EE)");
         }
 
         Message message = new Message();
@@ -115,7 +123,6 @@ public class MessageService {
         // Используем оптимизированный запрос с предварительной загрузкой отправителей
         List<Message> messages = messageRepository.findByChatIdOrderByCreatedAtDescWithSender(chatId, pageable);
 
-        // ОПТИМИЗАЦИЯ: Batch-загрузка статусов прочтения для всех сообщений
         return convertToDtoWithBatchReadStatuses(messages, userId);
     }
 
