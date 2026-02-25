@@ -15,6 +15,12 @@ const userService = {
     return response.data;
   },
 
+  // Получить свой актуальный профиль (с profilePictureUrl)
+  getMyProfile: async () => {
+    const response = await api.get('/api/users/profile');
+    return response.data;
+  },
+
   // Получить информацию о пользователе
   getUserInfo: async (userId) => {
     const response = await api.get(`/api/users/${userId}`);

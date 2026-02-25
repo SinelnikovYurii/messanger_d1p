@@ -2,6 +2,7 @@ package com.messenger.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.kafka.core.KafkaTemplate;
+import com.messenger.websocket.service.CallSessionManager;
 import com.messenger.websocket.service.JwtAuthService;
 import com.messenger.websocket.service.SessionManager;
 import io.netty.bootstrap.ServerBootstrap;
@@ -21,18 +22,21 @@ public class WebSocketServer {
     private final ObjectMapper objectMapper;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final SessionManager sessionManager;
+    private final CallSessionManager callSessionManager;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private ChannelFuture serverChannel;
 
-    public WebSocketServer(int port, JwtAuthService jwtAuthService, ObjectMapper objectMapper, KafkaTemplate<String, String> kafkaTemplate, SessionManager sessionManager) {
-        this.port = port;
-        this.jwtAuthService = jwtAuthService;
-        this.objectMapper = objectMapper;
-        this.kafkaTemplate = kafkaTemplate;
-        this.sessionManager = sessionManager;
-
-        log.info("[WEBSOCKET] WebSocket server initialized with Kafka integration");
+    public WebSocketServer(int port, JwtAuthService jwtAuthService, ObjectMapper objectMapper,
+                            KafkaTemplate<String, String> kafkaTemplate, SessionManager sessionManager,
+                            CallSessionManager callSessionManager) {
+        this.port               = port;
+        this.jwtAuthService     = jwtAuthService;
+        this.objectMapper       = objectMapper;
+        this.kafkaTemplate      = kafkaTemplate;
+        this.sessionManager     = sessionManager;
+        this.callSessionManager = callSessionManager;
+        log.info("[WEBSOCKET] WebSocket server initialized with CallSession support");
     }
 
     public void start() throws InterruptedException {
@@ -44,7 +48,7 @@ public class WebSocketServer {
             bootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
                     .handler(new LoggingHandler(LogLevel.INFO))
-                    .childHandler(new WebSocketServerInitializer(jwtAuthService, objectMapper, kafkaTemplate, sessionManager));
+                    .childHandler(new WebSocketServerInitializer(jwtAuthService, objectMapper, kafkaTemplate, sessionManager, callSessionManager));
 
             serverChannel = bootstrap.bind(port).sync();
             log.info("[WEBSOCKET] WebSocket server started on port {} with Kafka integration", port);

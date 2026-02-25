@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.KafkaTemplate;
+import com.messenger.websocket.service.CallSessionManager;
 import com.messenger.websocket.service.JwtAuthService;
 import com.messenger.websocket.service.MessageForwardService;
 import com.messenger.websocket.service.SessionManager;
@@ -38,7 +39,6 @@ public class WebSocketConfig {
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
-        // Отключаем сериализацию дат как timestamp
         mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         return mapper;
     }
@@ -48,12 +48,20 @@ public class WebSocketConfig {
         return new SessionManager();
     }
 
+    @Bean
+    public CallSessionManager callSessionManager(SessionManager sessionManager) {
+        return new CallSessionManager(sessionManager);
+    }
+
     @PostConstruct
     public void startWebSocketServer() {
         try {
-            log.info("[CONFIG] Initializing WebSocket server with Kafka integration...");
+            log.info("[CONFIG] Initializing WebSocket server with CallSession support...");
 
-            webSocketServer = new com.messenger.websocket.WebSocketServer(webSocketPort, jwtAuthService, objectMapper(), kafkaTemplate, sessionManager());
+            SessionManager sm = sessionManager();
+            webSocketServer = new com.messenger.websocket.WebSocketServer(
+                    webSocketPort, jwtAuthService, objectMapper(), kafkaTemplate,
+                    sm, callSessionManager(sm));
 
             webSocketThread = new Thread(() -> {
                 try {
@@ -72,7 +80,7 @@ public class WebSocketConfig {
 
             messageForwardService.startListening();
 
-            log.info("[CONFIG] WebSocket server configuration completed on port {}", webSocketPort);
+            log.info("[CONFIG] WebSocket server started on port {}", webSocketPort);
 
         } catch (Exception e) {
             log.error("[CONFIG] Failed to initialize WebSocket server", e);

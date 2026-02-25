@@ -16,6 +16,7 @@ import io.netty.handler.codec.http.cors.CorsConfigBuilder;
 import io.netty.handler.codec.http.cors.CorsHandler;
 import com.messenger.websocket.handler.WebSocketFrameHandler;
 import com.messenger.websocket.handler.HttpRequestHandler;
+import com.messenger.websocket.service.CallSessionManager;
 import com.messenger.websocket.service.JwtAuthService;
 import com.messenger.websocket.service.SessionManager;
 
@@ -25,12 +26,17 @@ public class WebSocketServerInitializer extends ChannelInitializer<SocketChannel
     private final ObjectMapper objectMapper;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final SessionManager sessionManager;
+    private final CallSessionManager callSessionManager;
 
-    public WebSocketServerInitializer(JwtAuthService jwtAuthService, ObjectMapper objectMapper, KafkaTemplate<String, String> kafkaTemplate, SessionManager sessionManager) {
-        this.jwtAuthService = jwtAuthService;
-        this.objectMapper = objectMapper;
-        this.kafkaTemplate = kafkaTemplate;
-        this.sessionManager = sessionManager; // Используем переданный Spring bean
+    public WebSocketServerInitializer(JwtAuthService jwtAuthService, ObjectMapper objectMapper,
+                                       KafkaTemplate<String, String> kafkaTemplate,
+                                       SessionManager sessionManager,
+                                       CallSessionManager callSessionManager) {
+        this.jwtAuthService     = jwtAuthService;
+        this.objectMapper       = objectMapper;
+        this.kafkaTemplate      = kafkaTemplate;
+        this.sessionManager     = sessionManager;
+        this.callSessionManager = callSessionManager;
     }
 
     @Override
@@ -54,6 +60,6 @@ public class WebSocketServerInitializer extends ChannelInitializer<SocketChannel
         pipeline.addLast(wsHandler);
 
 
-        pipeline.addLast(new WebSocketFrameHandler(jwtAuthService, objectMapper, sessionManager, kafkaTemplate));
+        pipeline.addLast(new WebSocketFrameHandler(jwtAuthService, objectMapper, sessionManager, kafkaTemplate, callSessionManager));
     }
 }

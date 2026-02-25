@@ -16,7 +16,7 @@ function getStorageKey(userId1, userId2) {
     return `e2ee_session_${id1}_${id2}`;
 }
 
-const ChatWindow = ({ selectedChat, onChatUpdate }) => {
+const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => {
     const [newMessage, setNewMessage] = useState('');
     const [messages, setMessages] = useState([]);
     const [showChatInfo, setShowChatInfo] = useState(false);
@@ -168,33 +168,12 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
                                 content = '[Ошибка: неверный ключ шифрования]';
                                 originalContent = null;
                             } else {
-                                // Для приватных чатов можем попробовать перегенерировать через X3DH
-                                console.warn('[E2EE] OperationError при дешифровании, пробуем перегенерировать ключ через X3DH...');
-                                try {
-                                    const myUserId = getCurrentUserId();
-                                    const newSessionKey = await performX3DHHandshake(x3dhKeys, partnerId, myUserId);
-                                    await saveSessionKey(myUserId, partnerId, newSessionKey);
-                                    console.log('[E2EE] New private session key generated via X3DH');
-
-                                    await ratchetManager.initSession(partnerId, newSessionKey);
-                                    setSessionKey(newSessionKey);
-                                    setRatchetReady(true);
-                                    setE2eeReady(true);
-
-                                    // Повторяем попытку дешифрования
-                                    const exported = await window.crypto.subtle.exportKey('raw', newSessionKey);
-                                    const bytes = new Uint8Array(exported);
-                                    const preview = Array.from(bytes.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('');
-                                    console.log('[E2EE][retry] New session key preview:', preview + '...');
-                                    const encryptedData = JSON.parse(content);
-                                    content = await decryptMessage(newSessionKey, encryptedData);
-                                    originalContent = null; // Если расшифровано успешно при повторе, не сохраняем
-                                    console.log('[E2EE] Message decrypted after X3DH key regeneration');
-                                } catch (retryError) {
-                                    console.warn('[E2EE] Повторная попытка дешифрования не удалась:', retryError);
-                                    content = '[Ошибка дешифрования]';
-                                    originalContent = null;
-                                }
+                                // Для приватных чатов это означает, что сообщение зашифровано другим ключом
+                                console.warn('[E2EE] OperationError при дешифровании - ключ не подходит для сообщения ' + m.id);
+                                // Не пытаемся регенерировать ключ для исторических сообщений,
+                                // так как это создаст новый ключ и сломает текущую сессию
+                                content = '[Ошибка дешифрования: старый ключ]';
+                                originalContent = null;
                             }
                         } else {
                             console.warn('[E2EE] Failed to decrypt message from DB:', e);
@@ -862,7 +841,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
             }
         }, 30000); // 30 секунд
         return () => clearInterval(interval);
-    }, [selectedChat]);
+    }, [selectedChat?.id]);
 
     // Сброс e2eeReady при смене чата
     useEffect(() => {
@@ -1462,13 +1441,13 @@ const ChatWindow = ({ selectedChat, onChatUpdate }) => {
 
     // Запуск анимации перехода между чатами
     useEffect(() => {
-        if (!selectedChat) return;
+        if (!selectedChat?.id) return;
         setChatTransitionStage('fadeOut');
         const timer = setTimeout(() => {
             setChatTransitionStage('fadeIn');
         }, 250);
         return () => clearTimeout(timer);
-    }, [selectedChat]);
+    }, [selectedChat?.id]);
 
     // Новый эффект для отслеживания загрузки изображений
 useEffect(() => {
@@ -1565,9 +1544,9 @@ useEffect(() => {
     return (
         <>
             {/* Весь основной JSX внутри одного фрагмента */}
-            <div className="flex-1 flex flex-col" {...dragHandlers} style={{ position: 'relative', backgroundColor: 'rgb(93 10 22 / 88%)' }}>
+            <div className="flex-1 flex flex-col overflow-hidden" {...dragHandlers} style={{ position: 'relative', backgroundColor: 'rgb(93 10 22 / 88%)' }}>
                 {/* Заголовок чата */}
-                <div className="border-b" style={{ padding: '14px', backgroundColor: '#8B1A1A', borderColor: '#B22222' }}>
+                <div className="border-b flex-shrink-0" style={{ padding: '14px', backgroundColor: '#8B1A1A', borderColor: '#B22222' }}>
                     <div className="flex items-center justify-between">
                         <div className="flex flex-col">
                             <div className="flex items-center">
@@ -1635,6 +1614,33 @@ useEffect(() => {
                                     </button>
                                 </>
                             )}
+                            {/* Кнопки звонка — только для приватных чатов */}
+                            {onStartCall && (
+                                <>
+                                    <button
+                                        onClick={() => onStartCall('audio')}
+                                        disabled={callActive}
+                                        className="p-2 rounded-full transition-colors disabled:opacity-40"
+                                        style={{ backgroundColor: '#228B22', color: '#fff' }}
+                                        title="Аудиозвонок"
+                                    >
+                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C9.7 21 3 14.3 3 6c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+                                        </svg>
+                                    </button>
+                                    <button
+                                        onClick={() => onStartCall('video')}
+                                        disabled={callActive}
+                                        className="p-2 rounded-full transition-colors disabled:opacity-40"
+                                        style={{ backgroundColor: '#1a56db', color: '#fff' }}
+                                        title="Видеозвонок"
+                                    >
+                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
+                                        </svg>
+                                    </button>
+                                </>
+                            )}
                             <button
                                 onClick={() => setShowChatInfo(!showChatInfo)}
                                 className="p-2 rounded-full"
@@ -1649,7 +1655,7 @@ useEffect(() => {
 
                 {/* Информация о чате */}
                 {showChatInfo && chatInfo && (
-                    <div className="border-b p-4" style={{ backgroundColor: '#FFF8F0', borderColor: '#B22222' }}>
+                    <div className="border-b p-4 flex-shrink-0" style={{ backgroundColor: '#FFF8F0', borderColor: '#B22222' }}>
                         <h3 className="font-bold mb-2" style={{ color: '#B22222' }}>Участники чата:</h3>
                         <div className="flex flex-wrap gap-2">
                             {chatInfo.participants?.map(participant => (
@@ -1798,7 +1804,7 @@ useEffect(() => {
                 </div>
 
                 {/* Форма отправки сообщений */}
-                <div className="border-t p-4" style={{ backgroundColor: '#F5F5DC', borderColor: '#B22222' }}>
+                <div className="border-t p-4 flex-shrink-0" style={{ backgroundColor: '#F5F5DC', borderColor: '#B22222' }}>
                     <form onSubmit={handleSendMessage} className="flex gap-2">
                         <FileUpload
                             ref={fileUploadRef}

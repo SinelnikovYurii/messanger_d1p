@@ -42,6 +42,16 @@ public class WebSocketMessage {
     private LocalDateTime lastSeen; // Время последнего визита (для USER_OFFLINE)
     private Boolean isOnline; // Статус онлайн (для USER_ONLINE/USER_OFFLINE)
 
+    // ===== Поля WebRTC сигналинга =====
+    private String callId;       // Уникальный ID звонка (UUID)
+    private Long targetUserId;   // Кому адресован звонок/сигнал
+    private String sdp;          // SDP offer / answer
+    private String sdpType;      // "offer" | "answer"
+    private String candidate;    // ICE candidate JSON строка
+    private String sdpMid;       // ICE candidate sdpMid
+    private Integer sdpMLineIndex; // ICE candidate sdpMLineIndex
+    private String callType;     // "audio" | "video"
+
     @JsonProperty("type")
     public MessageType getTypeEnum() {
         return type;

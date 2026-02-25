@@ -6,6 +6,7 @@ import RegisterForm from './components/RegisterForm';
 import EnhancedChatPage from './pages/EnhancedChatPage';
 import FriendsPage from './pages/FriendsPage';
 import authService from './services/authService';
+import userService from './services/userService';
 import TokenCleaner from './utils/tokenCleaner';
 import { setAuthFromService } from './store/slices/authSlice';
 
@@ -56,11 +57,29 @@ function App() {
             const hasValidLocalAuth = authService.hasToken() && authService.getUserData();
 
             if (hasValidLocalAuth) {
-                // Если есть локальные данные, сразу устанавливаем авторизацию
+                // Сразу показываем UI с локальными данными
                 setIsAuthenticated(true);
-                // ИСПРАВЛЕНИЕ: Синхронизируем Redux store при загрузке
                 dispatch(setAuthFromService());
                 console.log('App: Local auth valid, user authenticated, Redux synchronized');
+
+                // Фоново дозапрашиваем актуальный профиль (с profilePictureUrl)
+                userService.getMyProfile().then(profile => {
+                    const currentUser = authService.getUserData();
+                    if (currentUser && profile) {
+                        const merged = {
+                            ...currentUser,
+                            profilePictureUrl: profile.profilePictureUrl ?? currentUser.profilePictureUrl,
+                            email: profile.email ?? currentUser.email,
+                            bio: profile.bio ?? currentUser.bio,
+                        };
+                        localStorage.setItem('user', JSON.stringify(merged));
+                        dispatch(setAuthFromService());
+                        console.log('App: Profile refreshed, profilePictureUrl:', profile.profilePictureUrl);
+                    }
+                }).catch(e => {
+                    // Не критично — работаем с кэшированными данными
+                    console.warn('App: Could not refresh profile:', e.message);
+                });
             } else {
                 setIsAuthenticated(false);
                 console.log('App: No valid local auth');

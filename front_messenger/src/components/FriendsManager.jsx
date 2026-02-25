@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import userService from '../services/userService';
 import UserSearchModal from './UserSearchModal';
 import chatService from '../services/chatService';
+import { getAvatarUrl } from '../utils/avatarUtils';
 
 const FriendsManager = ({ onStartChat }) => {
   const [activeTab, setActiveTab] = useState('friends');
@@ -258,9 +259,7 @@ const FriendsManager = ({ onStartChat }) => {
 
   const renderUserCard = (user, actions) => {
     // Формируем правильный URL для аватарки
-    const avatarUrl = user.profilePictureUrl
-      ? `http://localhost:8083${user.profilePictureUrl}`
-      : null;
+    const avatarUrl = getAvatarUrl(user.profilePictureUrl);
 
     return (
       <div key={user.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow gap-4">

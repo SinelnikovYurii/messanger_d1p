@@ -29,10 +29,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
         dialect: org.hibernate.dialect.PostgreSQLDialect
         default_batch_fetch_size: 16
         jdbc.batch_size: 20
@@ -60,10 +60,17 @@ spring:
 
 # Конфигурация хранения файлов
 file:
+  upload-dir: ../uploads
   upload:
-    dir: ./uploads
+    dir: ../uploads
     max-size: 52428800  # 50MB в байтах
     allowed-types: image/jpeg,image/png,image/gif,image/webp,image/bmp,image/tiff,image/svg+xml,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,text/html,text/xml,application/json,application/xml,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/x-7z-compressed,application/gzip,application/x-tar,video/mp4,video/avi,video/quicktime,video/x-msvideo,audio/mpeg,audio/wav,audio/ogg,audio/mp3,application/octet-stream
+
+# TURN Server Configuration (для WebRTC)
+turn:
+  secret: TURN_SECRET_CHANGE_ME_IN_PROD_9911  # Должен совпадать с coturn/turnserver.conf static-auth-secret
+  host: localhost
+  port: 3478
 
 # JWT Configuration
 jwt:
@@ -73,8 +80,8 @@ logging:
   level:
     com.messenger.core: INFO
     org.springframework.security: INFO
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.hibernate.SQL: INFO
+    org.hibernate.type.descriptor.sql.BasicBinder: INFO
     org.hibernate.stat: WARN
     org.apache.kafka: WARN
     org.apache.kafka.clients.consumer.ConsumerConfig: ERROR

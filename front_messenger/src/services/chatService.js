@@ -87,7 +87,16 @@ class ChatService {
                             message.type === 'MESSAGE' ||
                             message.type === 'MESSAGE_READ' ||
                             message.type === 'USER_ONLINE' ||
-                            message.type === 'USER_OFFLINE') {
+                            message.type === 'USER_OFFLINE' ||
+                            // WebRTC сигналинг
+                            message.type === 'CALL_OFFER' ||
+                            message.type === 'CALL_ANSWER' ||
+                            message.type === 'ICE_CANDIDATE' ||
+                            message.type === 'CALL_REJECT' ||
+                            message.type === 'CALL_END' ||
+                            message.type === 'CALL_BUSY' ||
+                            message.type === 'CALL_MISSED' ||
+                            message.type === 'CALL_RINGING') {
                             this.messageHandlers.forEach(handler => handler(message));
                         }
                     } catch (error) {

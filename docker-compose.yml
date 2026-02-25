@@ -1,5 +1,18 @@
 version: '3.8'
 services:
+  # TURN/STUN Server (coturn) — relay для WebRTC
+  coturn:
+    image: coturn/coturn:latest
+    container_name: messenger_coturn
+    restart: unless-stopped
+    ports:
+      - "3478:3478/udp"          # STUN/TURN UDP
+      - "3478:3478/tcp"          # STUN/TURN TCP
+      - "49200-49300:49200-49300/udp"  # медиа-relay (свободный диапазон на Windows)
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
   # PostgreSQL Database
   postgres:
     image: postgres:15
@@ -7,7 +20,7 @@ services:
     environment:
       POSTGRES_DB: messenger_db
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: 9911
     ports:
       - "5432:5432"
     volumes:
@@ -19,23 +32,27 @@ services:
       retries: 5
 
   kafka:
-    image: bitnami/kafka:latest
+    image: confluentinc/cp-kafka:7.4.0
     container_name: messenger_kafka
     ports:
       - "9092:9092"
       - "9093:9093"
     environment:
-      - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_NODE_ID=0
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
-      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:9093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:9092'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'   # Можно генерировать командой: kafka-storage random-uuid
     volumes:
-      - kafka_data:/bitnami
+      - kafka_data:/tmp/kraft-combined-logs
     depends_on:
       postgres:
         condition: service_healthy

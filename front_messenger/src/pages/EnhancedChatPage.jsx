@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { logout } from '../store/slices/authSlice';
 import chatService from '../services/chatService';
+import webRTCService from '../services/WebRTCService';
 import EnhancedChatWindow from '../components/EnhancedChatWindow';
 import UserSearchModal from '../components/UserSearchModal';
 import CreateGroupChatModal from '../components/CreateGroupChatModal';
 import FriendsManager from '../components/FriendsManager';
 import ProfileModal from '../components/ProfileModal';
-import { getChatAvatarUrl, getChatInitials } from '../utils/avatarUtils';
+import IncomingCallModal from '../components/IncomingCallModal';
+import CallWindow from '../components/CallWindow';
+import { getChatAvatarUrl, getChatInitials, getAvatarUrl, getUserInitials } from '../utils/avatarUtils';
 
 const ChatPage = () => {
   const [chats, setChats] = useState([]);
@@ -21,6 +24,11 @@ const ChatPage = () => {
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true); // Новый флаг для инициализации
+
+  // ── WebRTC состояние ──────────────────────────────────────────────────────
+  const [incomingCall, setIncomingCall] = useState(null);   // { callId, callerId, callerName, callType, sdpOffer }
+  const [activeCall, setActiveCall] = useState(null);        // { callId, peerId, peerName, callType, localStream }
+  // ─────────────────────────────────────────────────────────────────────────
 
   const { user } = useSelector(state => state.auth);
   const dispatch = useDispatch();
@@ -286,8 +294,101 @@ const ChatPage = () => {
     }
   }, [selectedChat?.id]);
 
-  const loadChats = async () => {
+  // ── WebRTC: подписка на события звонков ──────────────────────────────────
+  useEffect(() => {
+    const offIncoming = webRTCService.on('incomingCall', (data) => {
+      console.log('[Call] Incoming call:', data);
+      // Если уже в звонке — отклоняем автоматически
+      if (activeCall) {
+        webRTCService.rejectCall(data.callId, data.callerId);
+        return;
+      }
+      setIncomingCall(data);
+    });
+
+    const offEnded = webRTCService.on('callEnded', () => {
+      setActiveCall(null);
+      setIncomingCall(null);
+    });
+
+    const offRejected = webRTCService.on('callRejected', () => {
+      setActiveCall(null);
+      setIncomingCall(null);
+    });
+
+    const offBusy = webRTCService.on('callBusy', () => {
+      alert('Пользователь сейчас занят');
+      setActiveCall(null);
+    });
+
+    const offError = webRTCService.on('error', ({ error }) => {
+      console.error('[Call] WebRTC error:', error);
+      setActiveCall(null);
+      setIncomingCall(null);
+    });
+
+    return () => {
+      offIncoming();
+      offEnded();
+      offRejected();
+      offBusy();
+      offError();
+    };
+  }, [activeCall]);
+
+  // Инициировать исходящий звонок из текущего чата
+  const handleStartCall = useCallback(async (callType = 'video') => {
+    if (!selectedChat || selectedChat.chatType === 'GROUP') return;
+    const peer = selectedChat.participants?.find(p => p.id !== user?.id);
+    if (!peer) return;
+
     try {
+      const localStream = await webRTCService.initiateCall(peer.id, callType);
+      setActiveCall({
+        callId: null,
+        peerId: peer.id,
+        peerName: peer.username,
+        peerAvatar: peer.profilePictureUrl || null,
+        callType,
+        localStream,
+      });
+    } catch (err) {
+      console.error('[Call] Failed to initiate call:', err);
+      alert('Не удалось получить доступ к камере/микрофону');
+    }
+  }, [selectedChat, user]);
+
+  // Принять входящий звонок
+  const handleAcceptCall = useCallback(async () => {
+    if (!incomingCall) return;
+    const { callId, callerId, callerName, callerAvatar, callType, sdpOffer } = incomingCall;
+    setIncomingCall(null);
+    try {
+      const localStream = await webRTCService.answerCall(callId, sdpOffer, callerId, callType);
+      setActiveCall({ callId, peerId: callerId, peerName: callerName, peerAvatar: callerAvatar || null, callType, localStream });
+    } catch (err) {
+      console.error('[Call] Failed to answer call:', err);
+      alert('Не удалось получить доступ к камере/микрофону');
+    }
+  }, [incomingCall]);
+
+  // Отклонить входящий звонок
+  const handleRejectCall = useCallback(() => {
+    if (!incomingCall) return;
+    webRTCService.rejectCall(incomingCall.callId, incomingCall.callerId);
+    setIncomingCall(null);
+  }, [incomingCall]);
+
+  // Завершить активный звонок
+  const handleHangUp = useCallback(() => {
+    if (activeCall) {
+      webRTCService.hangUp(activeCall.peerId);
+    }
+    setActiveCall(null);
+  }, [activeCall]);
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const loadChats = async () => {    try {
       setLoading(true);
       const userChats = await chatService.getUserChats();
       setChats(userChats);
@@ -446,6 +547,10 @@ const ChatPage = () => {
     );
   }
 
+  // Получаем URL аватарки пользователя через утилиту
+  const userAvatarUrl = getAvatarUrl(user?.profilePictureUrl);
+  const userInitials = getUserInitials(user?.username);
+
   return (
     <div className="flex h-screen" style={{ backgroundColor: '#F5F5DC' }}>
       {/* Боковая панель */}
@@ -455,22 +560,25 @@ const ChatPage = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <div className="w-10 h-10 rounded-full flex items-center justify-center mr-3 overflow-hidden" style={{ backgroundColor: '#B22222', border: '2px solid #F5F5DC' }}>
-                {user?.profilePictureUrl ? (
+                {userAvatarUrl ? (
                   <img
-                    src={`http://localhost:8083${user.profilePictureUrl}`}
-                    alt={user.username}
+                    src={userAvatarUrl}
+                    alt={user?.username || 'User'}
                     className="w-full h-full rounded-full object-cover"
                     onError={(e) => {
+                      console.log('Avatar load error for current user:', userAvatarUrl);
                       e.target.style.display = 'none';
-                      e.target.nextSibling.style.display = 'flex';
+                      if (e.target.nextSibling) {
+                        e.target.nextSibling.style.display = 'flex';
+                      }
                     }}
                   />
                 ) : null}
                 <span
                   className="text-white font-semibold text-lg w-full h-full flex items-center justify-center"
-                  style={{ display: user?.profilePictureUrl ? 'none' : 'flex' }}
+                  style={{ display: userAvatarUrl ? 'none' : 'flex' }}
                 >
-                  {user?.username?.charAt(0)?.toUpperCase() || 'U'}
+                  {userInitials}
                 </span>
               </div>
               <div>
@@ -652,10 +760,14 @@ const ChatPage = () => {
       </div>
 
       {/* Основная область чата */}
-      <EnhancedChatWindow
-        selectedChat={selectedChat}
-        onChatUpdate={handleChatUpdate}
-      />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <EnhancedChatWindow
+          selectedChat={selectedChat}
+          onChatUpdate={handleChatUpdate}
+          onStartCall={selectedChat?.chatType !== 'GROUP' ? handleStartCall : null}
+          callActive={!!activeCall}
+        />
+      </div>
 
       {/* Модальные окна */}
       <UserSearchModal
@@ -676,6 +788,29 @@ const ChatPage = () => {
         onClose={() => setShowProfileModal(false)}
         user={user}
       />
+
+      {/* Входящий звонок */}
+      {incomingCall && (
+        <IncomingCallModal
+          caller={{ id: incomingCall.callerId, name: incomingCall.callerName }}
+          callType={incomingCall.callType}
+          onAccept={handleAcceptCall}
+          onReject={handleRejectCall}
+        />
+      )}
+
+      {/* Активный звонок */}
+      {activeCall && (
+        <CallWindow
+          callId={activeCall.callId}
+          peerId={activeCall.peerId}
+          peerName={activeCall.peerName}
+          peerAvatar={activeCall.peerAvatar}
+          callType={activeCall.callType}
+          localStream={activeCall.localStream}
+          onHangUp={handleHangUp}
+        />
+      )}
     </div>
   );
 };
