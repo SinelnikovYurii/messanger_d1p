@@ -5,6 +5,7 @@ import LoginForm from './components/LoginForm';
 import RegisterForm from './components/RegisterForm';
 import EnhancedChatPage from './pages/EnhancedChatPage';
 import FriendsPage from './pages/FriendsPage';
+import KeyBackupGate from './components/KeyBackupGate';
 import authService from './services/authService';
 import userService from './services/userService';
 import TokenCleaner from './utils/tokenCleaner';
@@ -159,8 +160,8 @@ function App() {
                 <Route path="/" element={<Navigate to={isAuthenticated ? '/chat' : '/login'} replace />} />
                 <Route path="/login" element={isAuthenticated ? <Navigate to="/chat" replace /> : <LoginForm setIsAuthenticated={setIsAuthenticated} />} />
                 <Route path="/register" element={isAuthenticated ? <Navigate to="/chat" replace /> : <RegisterForm setIsAuthenticated={setIsAuthenticated} />} />
-                <Route path="/chat" element={isAuthenticated ? <EnhancedChatPage /> : <Navigate to="/login" replace />} />
-                <Route path="/friends" element={isAuthenticated ? <FriendsPage /> : <Navigate to="/login" replace />} />
+                <Route path="/chat" element={isAuthenticated ? <KeyBackupGate><EnhancedChatPage /></KeyBackupGate> : <Navigate to="/login" replace />} />
+                <Route path="/friends" element={isAuthenticated ? <KeyBackupGate><FriendsPage /></KeyBackupGate> : <Navigate to="/login" replace />} />
             </Routes>
         </Router>
     );

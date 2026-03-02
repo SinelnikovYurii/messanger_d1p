@@ -20,7 +20,10 @@ class UserTest {
 
     @Test
     void testAllArgsConstructorAndGettersSetters() {
-        User user = new User(1L, "username", "email", "password", "first", "last", "pic", "bio", false, null, null, null, null, null, null, null);
+        User user = new User(1L, "username", "email", "password", "first", "last",
+                "pic", "bio", false, null, null, null, null,
+                null, null, null, null, null,
+                null, null, null, null);
         assertEquals(1L, user.getId());
         assertEquals("username", user.getUsername());
         assertEquals("email", user.getEmail());

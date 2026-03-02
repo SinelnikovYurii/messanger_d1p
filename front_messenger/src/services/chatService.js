@@ -1,4 +1,14 @@
 import api from './api';
+import { CHAT_SERVER_URL } from './api';
+
+// Определяем Gateway URLs так же как в api.js
+const isDev = process.env.NODE_ENV === 'development';
+const GATEWAY_HTTP = process.env.REACT_APP_GATEWAY_URL ||
+  (isDev ? 'http://localhost:8083' : '');
+const GATEWAY_WS = process.env.REACT_APP_WS_URL ||
+  (isDev
+    ? 'ws://localhost:8083'
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`);
 
 class ChatService {
     constructor() {
@@ -28,7 +38,7 @@ class ChatService {
             // Небольшая задержка перед новым соединением для корректного закрытия старого
             setTimeout(() => {
                 // Подключаемся через Gateway на порту 8083
-                const wsUrl = `ws://localhost:8083/ws/chat?token=${token}`;
+                const wsUrl = `${GATEWAY_WS}/ws/chat?token=${token}`;
                 console.log('Connecting to WebSocket:', wsUrl);
 
                 this.socket = new WebSocket(wsUrl);
@@ -329,7 +339,7 @@ class ChatService {
         if (fileUrl && fileUrl.startsWith('/api/files/')) {
             const token = localStorage.getItem('token');
             // Для GET запросов файлов добавляем токен как query параметр
-            return `http://localhost:8083${fileUrl}${token ? '?token=' + token : ''}`;
+            return `${GATEWAY_HTTP}${fileUrl}${token ? '?token=' + token : ''}`;
         }
         return fileUrl;
     }

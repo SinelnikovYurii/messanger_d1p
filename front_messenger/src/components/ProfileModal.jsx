@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { logout } from '../store/slices/authSlice';
 import userService from '../services/userService';
 import authService from '../services/authService';
+import keyBackupService from '../services/keyBackupService';
 import { getAvatarUrl, getUserInitials } from '../utils/avatarUtils';
 
 const ProfileModal = ({ isOpen, onClose }) => {
@@ -15,6 +16,15 @@ const ProfileModal = ({ isOpen, onClose }) => {
   const [success, setSuccess] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
+
+  // KEK (ключи шифрования)
+  const [showKekSection, setShowKekSection] = useState(false);
+  const [kekOldPassword, setKekOldPassword] = useState('');
+  const [kekNewPassword, setKekNewPassword] = useState('');
+  const [kekNewPasswordConfirm, setKekNewPasswordConfirm] = useState('');
+  const [kekLoading, setKekLoading] = useState(false);
+  const [kekError, setKekError] = useState('');
+  const [kekSuccess, setKekSuccess] = useState('');
 
   const [formData, setFormData] = useState({
     username: '',
@@ -40,6 +50,12 @@ const ProfileModal = ({ isOpen, onClose }) => {
       setSuccess(false);
       setAvatarFile(null);
       setAvatarPreview(null);
+      setShowKekSection(false);
+      setKekOldPassword('');
+      setKekNewPassword('');
+      setKekNewPasswordConfirm('');
+      setKekError('');
+      setKekSuccess('');
     }
   }, [isOpen]); // Только isOpen в зависимостях!
 
@@ -132,8 +148,48 @@ const ProfileModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleEditClick = (e) => {
+  // Обновление KEK-пароля: перешифровываем ключи новым паролем
+  const handleKekUpdate = async (e) => {
     e.preventDefault();
+    setKekError('');
+    setKekSuccess('');
+
+    if (kekNewPassword.length < 8) {
+      setKekError('Новый пароль должен быть не менее 8 символов');
+      return;
+    }
+    if (kekNewPassword !== kekNewPasswordConfirm) {
+      setKekError('Новые пароли не совпадают');
+      return;
+    }
+
+    setKekLoading(true);
+    try {
+      // Если есть старый бекап — проверяем старый пароль (восстанавливаем ключи)
+      if (kekOldPassword) {
+        await keyBackupService.downloadAndRestoreKeys(kekOldPassword);
+      }
+      // Шифруем текущие ключи новым паролем и загружаем
+      await keyBackupService.uploadKeyBackup(kekNewPassword);
+      sessionStorage.setItem('kek_password', kekNewPassword);
+      setKekSuccess('Пароль ключей успешно обновлён!');
+      setKekOldPassword('');
+      setKekNewPassword('');
+      setKekNewPasswordConfirm('');
+      setTimeout(() => setKekSuccess(''), 4000);
+    } catch (err) {
+      if (err.message?.includes('Неверный пароль')) {
+        setKekError('Неверный текущий пароль шифрования ключей');
+      } else {
+        setKekError(err.message || 'Ошибка обновления пароля ключей');
+      }
+    } finally {
+      setKekLoading(false);
+    }
+  };
+
+
+  const handleEditClick = (e) => {
     e.stopPropagation();
     console.log('Переключение в режим редактирования');
     setIsEditing(true);
@@ -358,6 +414,99 @@ const ProfileModal = ({ isOpen, onClose }) => {
               </button>
             )}
           </div>
+
+          {/* ── Секция E2EE ключей ── */}
+          {!isEditing && (
+            <div className="mt-4 border-t pt-4" style={{ borderColor: 'rgba(245,230,214,0.3)' }}>
+              <button
+                type="button"
+                onClick={() => { setShowKekSection(v => !v); setKekError(''); setKekSuccess(''); }}
+                className="w-full text-left text-sm font-semibold flex items-center gap-2"
+                style={{ background: 'none', border: 'none', color: '#F5F5DC', cursor: 'pointer' }}
+              >
+                <span>🔑 Управление ключами E2EE</span>
+                <span>{showKekSection ? '▲' : '▼'}</span>
+              </button>
+              {showKekSection && (
+                <div className="mt-3 space-y-3">
+                  <p className="text-xs" style={{ color: 'rgba(245,230,214,0.8)' }}>
+                    Здесь вы можете обновить пароль шифрования ключей или создать новый бекап.
+                    Сервер не видит этот пароль.
+                  </p>
+
+                  {/* Обновить KEK-пароль */}
+                  <form onSubmit={handleKekUpdate} className="space-y-2">
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: '#F5F5DC' }}>
+                        Текущий пароль ключей (если есть бекап на сервере)
+                      </label>
+                      <input
+                        type="password"
+                        value={kekOldPassword}
+                        onChange={e => setKekOldPassword(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg text-sm"
+                        style={{ background: '#F5DEB3', color: '#520808', border: '1px solid #B22222' }}
+                        placeholder="Текущий пароль ключей"
+                        disabled={kekLoading}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: '#F5F5DC' }}>
+                        Новый пароль ключей
+                      </label>
+                      <input
+                        type="password"
+                        value={kekNewPassword}
+                        onChange={e => setKekNewPassword(e.target.value)}
+                        required
+                        minLength={8}
+                        className="w-full px-3 py-1.5 rounded-lg text-sm"
+                        style={{ background: '#F5DEB3', color: '#520808', border: '1px solid #B22222' }}
+                        placeholder="Минимум 8 символов"
+                        disabled={kekLoading}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: '#F5F5DC' }}>
+                        Повторите новый пароль ключей
+                      </label>
+                      <input
+                        type="password"
+                        value={kekNewPasswordConfirm}
+                        onChange={e => setKekNewPasswordConfirm(e.target.value)}
+                        required
+                        minLength={8}
+                        className="w-full px-3 py-1.5 rounded-lg text-sm"
+                        style={{ background: '#F5DEB3', color: '#520808', border: '1px solid #B22222' }}
+                        placeholder="Повторите пароль"
+                        disabled={kekLoading}
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={kekLoading || kekNewPassword.length < 8}
+                      className="w-full py-1.5 rounded-lg text-sm font-semibold"
+                      style={{ background: '#B22222', color: '#F5F5DC', border: 'none' }}
+                    >
+                      {kekLoading ? 'Обновление...' : 'Обновить пароль ключей и бекап'}
+                    </button>
+                  </form>
+
+                  {kekError && (
+                    <div className="text-xs text-center px-2 py-1 rounded" style={{ background: 'rgba(178,34,34,0.2)', color: '#FFDAB9' }}>
+                      {kekError}
+                    </div>
+                  )}
+                  {kekSuccess && (
+                    <div className="text-xs text-center px-2 py-1 rounded" style={{ background: 'rgba(34,139,34,0.2)', color: '#90EE90' }}>
+                      {kekSuccess}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Сообщения об ошибке/успехе */}
           {error && <div className="mt-3 text-center text-sm" style={{color:'#B22222'}}>{error}</div>}
           {success && <div className="mt-3 text-center text-sm" style={{color:'#228B22'}}>

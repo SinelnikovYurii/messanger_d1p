@@ -8,11 +8,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.reactive.function.client.WebClient;
 import part.example.authorization_service.DTO.LoginRequest;
 import part.example.authorization_service.DTO.RegisterRequest;
 import part.example.authorization_service.JWT.JwtUtil;
 import part.example.authorization_service.models.User;
 import part.example.authorization_service.repository.UserRepository;
+import reactor.core.publisher.Mono;
 
 import java.util.Optional;
 import java.util.Map;
@@ -29,6 +31,18 @@ class AuthenticationServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private JwtUtil jwtUtil;
+    @Mock
+    private WebClient.Builder webClientBuilder;
+    @Mock
+    private WebClient webClient;
+    @Mock
+    private WebClient.RequestBodyUriSpec requestBodyUriSpec;
+    @Mock
+    private WebClient.RequestBodySpec requestBodySpec;
+    @Mock
+    private WebClient.RequestHeadersSpec<?> requestHeadersSpec;
+    @Mock
+    private WebClient.ResponseSpec responseSpec;
     @InjectMocks
     private AuthenticationService authenticationService;
 
@@ -36,6 +50,8 @@ class AuthenticationServiceTest {
     void register_success() {
         RegisterRequest request = new RegisterRequest();
         request.setUsername("newuser");
+        request.setPassword("secret");
+        request.setEmail("newuser@example.com");
         Mockito.when(userRepository.findByUsername(eq("newuser"))).thenReturn(Optional.empty());
         Mockito.when(passwordEncoder.encode(any())).thenReturn("encodedPassword");
         Mockito.when(userRepository.save(any())).thenAnswer(invocation -> {
@@ -44,6 +60,14 @@ class AuthenticationServiceTest {
             return user;
         });
         Mockito.when(jwtUtil.generateToken(any(User.class))).thenReturn("jwt-token");
+        // Мокируем цепочку WebClient
+        Mockito.when(webClientBuilder.build()).thenReturn(webClient);
+        Mockito.when(webClient.post()).thenReturn(requestBodyUriSpec);
+        Mockito.when(requestBodyUriSpec.uri(any(String.class))).thenReturn(requestBodySpec);
+        Mockito.when(requestBodySpec.header(any(), any())).thenReturn(requestBodySpec);
+        Mockito.doReturn(requestHeadersSpec).when(requestBodySpec).bodyValue(any());
+        Mockito.when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        Mockito.when(responseSpec.bodyToMono(String.class)).thenReturn(Mono.just("ok"));
         ResponseEntity<?> response = authenticationService.register(request);
         assertEquals(200, response.getStatusCode().value());
         assertNotNull(response.getBody());
@@ -108,6 +132,8 @@ class AuthenticationServiceTest {
     void register_repositoryException() {
         RegisterRequest request = new RegisterRequest();
         request.setUsername("newuser");
+        request.setPassword("secret");
+        request.setEmail("newuser@example.com");
         Mockito.when(userRepository.findByUsername(eq("newuser"))).thenThrow(new RuntimeException("DB error"));
         ResponseEntity<?> response = authenticationService.register(request);
         assertEquals(500, response.getStatusCode().value());
@@ -131,18 +157,10 @@ class AuthenticationServiceTest {
         RegisterRequest request = new RegisterRequest();
         request.setUsername("newuser");
         request.setPassword("");
+        request.setEmail("newuser@example.com");
         Mockito.when(userRepository.findByUsername(eq("newuser"))).thenReturn(Optional.empty());
-        Mockito.when(passwordEncoder.encode(any())).thenReturn("");
-        Mockito.when(userRepository.save(any())).thenAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            user.setId(1L);
-            return user;
-        });
-        Mockito.when(jwtUtil.generateToken(any(User.class))).thenReturn("jwt-token");
         ResponseEntity<?> response = authenticationService.register(request);
-        assertEquals(200, response.getStatusCode().value());
-        assertNotNull(response.getBody());
-        assertTrue(((Map<?,?>)response.getBody()).containsKey("token"));
+        assertEquals(400, response.getStatusCode().value());
     }
 
     @Test
@@ -170,18 +188,11 @@ class AuthenticationServiceTest {
     void register_emptyUsername() {
         RegisterRequest request = new RegisterRequest();
         request.setUsername("");
+        request.setPassword("secret");
+        request.setEmail("newuser@example.com");
         Mockito.when(userRepository.findByUsername(eq(""))).thenReturn(Optional.empty());
-        Mockito.when(passwordEncoder.encode(any())).thenReturn("encodedPassword");
-        Mockito.when(userRepository.save(any())).thenAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            user.setId(1L);
-            return user;
-        });
-        Mockito.when(jwtUtil.generateToken(any(User.class))).thenReturn("jwt-token");
         ResponseEntity<?> response = authenticationService.register(request);
-        assertEquals(200, response.getStatusCode().value());
-        assertNotNull(response.getBody());
-        assertTrue(((Map<?,?>)response.getBody()).containsKey("token"));
+        assertEquals(400, response.getStatusCode().value());
     }
 
     @Test

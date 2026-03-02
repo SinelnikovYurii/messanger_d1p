@@ -24,56 +24,14 @@ spring:
             exposedHeaders:
               - "Authorization"
               - "Content-Type"
-      routes:
-        # Authorization Service
-        - id: auth-service
-          uri: http://localhost:8081
-          predicates:
-            - Path=/auth/**
-          filters:
-            - RewritePath=/auth/(?<path>.*), /${path}
-
-        # Публичный доступ к аватаркам без JWT
-        - id: avatars-public
-          uri: http://localhost:8082
-          predicates:
-            - Path=/avatars/**,/uploads/avatars/**
-          filters:
-            - AddRequestHeader=X-Public-Access, true
-
-        # Core API Service
-        - id: core-api-service
-          uri: http://localhost:8082
-          predicates:
-            - Path=/api/**
-          filters:
-            - AddRequestHeader=X-Gateway-Request, true
-            - PreserveHostHeader
-
-        # Users/PreKey Bundle (Core API Service)
-        - id: users-prekey-bundle
-          uri: http://localhost:8082
-          predicates:
-            - Path=/users/*/prekey-bundle
-          filters:
-            - AddRequestHeader=X-Gateway-Request, true
-            - RewritePath=/users/(?<id>[^/]+)/prekey-bundle, /api/users/${id}/prekey-bundle
-
-        # WebSocket Server
-        - id: websocket-service
-          uri: ws://localhost:8092
-          predicates:
-            - Path=/ws/**
-          filters:
-            - RewritePath=/ws/(?<path>.*), /${path}
-            - name: WebSocketTokenFilter
+      # Маршруты определены в GatewayConfig.java через @Value из application-docker.yml
 
 # JWT конфигурация
 jwt:
   secret: SYDLF52DangerKeySYDLF9911894325962389476582937465986348957632897562387ww7sfusdfy9374hguif738794fgu9iw3g4f987uswuhfiuGIUDS9GDUSWHTPIWEHYS0DFS098DF98SDFSHDFUSH9374FISDU87SADASUDGHGHAISD7A9OSD823UGHRUIHGSDW9D78Y238RUIOSWADHFOUWHSSDFDDUHWWF9384FGSD
   expiration: 86400000
 
-# URL конфигурация для сервисов
+# URL конфигурация для локальной разработки (переопределяется в application-docker.yml)
 auth-service:
   url: http://localhost:8081
 
@@ -85,6 +43,9 @@ chat-service:
 
 message-service:
   url: http://localhost:8082
+
+websocket-server:
+  url: ws://localhost:8092
 
 logging:
   level:

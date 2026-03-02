@@ -1,62 +1,224 @@
-version: '3.8'
 services:
-  # TURN/STUN Server (coturn) — relay для WebRTC
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: messenger_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-messenger_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-9911}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - messenger_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-messenger_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Kafka (KRaft mode, без Zookeeper) ────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: messenger_kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - messenger_net
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── coturn — TURN/STUN сервер для WebRTC ─────────────────────────────────────
   coturn:
     image: coturn/coturn:latest
     container_name: messenger_coturn
     restart: unless-stopped
     ports:
-      - "3478:3478/udp"          # STUN/TURN UDP
-      - "3478:3478/tcp"          # STUN/TURN TCP
-      - "49200-49300:49200-49300/udp"  # медиа-relay (свободный диапазон на Windows)
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49200-49300:49200-49300/udp"
+    environment:
+      # На VPS задайте реальный публичный IP: EXTERNAL_IP=1.2.3.4
+      # Если не задан — entrypoint определит IP автоматически
+      EXTERNAL_IP: ${EXTERNAL_IP:-}
     volumes:
       - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
-    command: ["-c", "/etc/coturn/turnserver.conf"]
+      - ./coturn/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    networks:
+      - messenger_net
 
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15
-    container_name: messenger_postgres
+  # ── Authorization Service (порт 8081) ─────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./Authorization_service
+      dockerfile: Dockerfile
+    container_name: messenger_auth
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: messenger_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 9911
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
-  kafka:
-    image: confluentinc/cp-kafka:7.4.0
-    container_name: messenger_kafka
-    ports:
-      - "9092:9092"
-      - "9093:9093"
-    environment:
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: 'broker,controller'
-      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:9093'
-      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:9092'
-      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      KAFKA_NUM_PARTITIONS: 1
-      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
-      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'   # Можно генерировать командой: kafka-storage random-uuid
-    volumes:
-      - kafka_data:/tmp/kraft-combined-logs
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-messenger_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-9911}
+      CORE_API_HOST: core-api-service
+      CORE_API_PORT: 8082
+      JWT_SECRET: ${JWT_SECRET}
+    networks:
+      - messenger_net
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8081 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Core API Service (порт 8082) ──────────────────────────────────────────────
+  core-api-service:
+    build:
+      context: ./core-api-service
+      dockerfile: Dockerfile
+    container_name: messenger_core_api
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-messenger_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-9911}
+      KAFKA_HOST: kafka
+      KAFKA_PORT: 9092
+      JWT_SECRET: ${JWT_SECRET}
+      TURN_SECRET: ${TURN_SECRET:-TURN_SECRET_CHANGE_ME_IN_PROD_9911}
+      TURN_HOST: coturn
+      TURN_PORT: 3478
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - messenger_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8082 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── WebSocket Server (порт 8092) ──────────────────────────────────────────────
+  websocket-server:
+    build:
+      context: ./websocket_server
+      dockerfile: Dockerfile
+    container_name: messenger_websocket
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      KAFKA_HOST: kafka
+      KAFKA_PORT: 9092
+      JWT_SECRET: ${JWT_SECRET}
+    networks:
+      - messenger_net
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8092 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # ── API Gateway (порт 8083) ───────────────────────────────────────────────────
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: messenger_gateway
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      AUTH_SERVICE_HOST: auth-service
+      AUTH_SERVICE_PORT: 8081
+      CORE_API_HOST: core-api-service
+      CORE_API_PORT: 8082
+      WS_SERVICE_HOST: websocket-server
+      WS_SERVICE_PORT: 8092
+      JWT_SECRET: ${JWT_SECRET}
+    networks:
+      - messenger_net
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      core-api-service:
+        condition: service_healthy
+      websocket-server:
+        condition: service_healthy
+
+  # ── Frontend (порт 80) ────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./front_messenger
+      dockerfile: Dockerfile
+      args:
+        # Пустые значения = относительные пути, nginx в контейнере сам проксирует
+        # На VPS с доменом: REACT_APP_GATEWAY_URL=https://your-domain.com
+        REACT_APP_GATEWAY_URL: ""
+        REACT_APP_WS_URL: ""
+    container_name: messenger_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - messenger_net
+    depends_on:
+      - gateway
 
 volumes:
   postgres_data:
   kafka_data:
+  uploads_data:
+
+networks:
+  messenger_net:
+    driver: bridge

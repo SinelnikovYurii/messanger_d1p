@@ -298,6 +298,33 @@ public class UserService {
     }
 
     /**
+     * Сохранить зашифрованный бекап E2EE ключей пользователя.
+     * encryptedPayload — JSON-строка вида { iv, salt, ciphertext } в Base64.
+     * Сервер не знает ключ шифрования (KEK), хранит только зашифрованный blob.
+     */
+    public void saveEncryptedKeyBackup(Long userId, String encryptedPayload) {
+        if (encryptedPayload == null || encryptedPayload.isEmpty()) {
+            throw new IllegalArgumentException("encryptedPayload не может быть пустым");
+        }
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        user.setEncryptedKeyBackup(encryptedPayload);
+        userRepository.save(user);
+        log.info("[KEY-BACKUP] Encrypted key backup saved for user {}", userId);
+    }
+
+    /**
+     * Получить зашифрованный бекап E2EE ключей пользователя.
+     * Возвращает null, если бекап ещё не сохранён.
+     */
+    @Transactional(readOnly = true)
+    public String getEncryptedKeyBackup(Long userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        return user.getEncryptedKeyBackup();
+    }
+
+    /**
      * Сменить пароль пользователя
      */
     public void changePassword(Long userId, String newPassword) {

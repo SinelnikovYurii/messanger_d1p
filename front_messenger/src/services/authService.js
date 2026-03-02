@@ -38,18 +38,31 @@ export async function performX3DHHandshake(myKeys, partnerId, myUserId) {
   const partnerIdentityKey = await importPublicKey(bundle.identityKey);
   console.log('[X3DH] Partner identity key imported successfully');
 
-  // КРИТИЧНО: Также получаем СВОИ ключи с сервера для проверки синхронизации
+  // Проверяем синхронизацию своих ключей с сервером
   const myServerBundle = await userService.getPreKeyBundle(myUserId);
   const myPublicExportRaw = await window.crypto.subtle.exportKey('raw', myKeys.identityKeyPair.publicKey);
   const myPublicBase64 = btoa(String.fromCharCode(...new Uint8Array(myPublicExportRaw)));
 
   if (myPublicBase64 !== myServerBundle.identityKey) {
-    console.error('[X3DH] CRITICAL: My local identity key does NOT match server!');
-    console.error('[X3DH] Local key:', myPublicBase64.substring(0, 20) + '...');
-    console.error('[X3DH] Server key:', myServerBundle.identityKey.substring(0, 20) + '...');
-    throw new Error('Local keys are out of sync with server! Please reload the page.');
+    console.warn('[X3DH] Local key differs from server — auto-republishing local key to server...');
+    console.warn('[X3DH] Local key:', myPublicBase64.substring(0, 20) + '...');
+    console.warn('[X3DH] Server key:', myServerBundle.identityKey?.substring(0, 20) + '...');
+    // Автоматически исправляем — публикуем локальный ключ как актуальный
+    try {
+      await userService.savePreKeyBundle(
+        myUserId,
+        myPublicBase64,
+        myPublicBase64, // signedPreKey = identityKey для совместимости
+        JSON.stringify([]),
+        ''
+      );
+      console.log('[X3DH] ✓ Local key republished to server successfully');
+    } catch (pubErr) {
+      console.error('[X3DH] Failed to republish key:', pubErr.message);
+      // Продолжаем с локальным ключом
+    }
   } else {
-    console.log('[X3DH] My local identity key matches server');
+    console.log('[X3DH] ✓ My local identity key matches server');
   }
 
   // Экспортируем ключи для детального логирования
@@ -219,6 +232,8 @@ class AuthService {
     clearAuth() {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        // Удаляем KEK-пароль из сессии при выходе
+        sessionStorage.removeItem('kek_password');
         this.notifyListeners(false);
         console.log('AuthService: Auth data cleared');
 

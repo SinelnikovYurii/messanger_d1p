@@ -34,6 +34,8 @@ const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => 
     const isInitialScrollDone = useRef(false); // Ref вместо state для избежания лишних рендеров
     const markAsReadTimeoutRef = useRef(null); // Таймаут для отметки сообщений как прочитанных
     const sessionKeyRef = useRef(null); // Реф для хранения актуального sessionKey и избежания stale closure
+    const e2eeReadyRef = useRef(false);   // Синхронный флаг готовности E2EE (без задержки setState)
+    const currentChatIdRef = useRef(null); // Текущий chatId — для защиты от гонок при быстрой смене чата
     const { user } = useSelector(state => state.auth);
     const fileUploadRef = useRef(null);
     const pendingReadMapRef = useRef(new Map()); // Буфер для MESSAGE_READ до появления сообщения
@@ -128,63 +130,36 @@ const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => 
             // Сообщения приходят от НОВЫХ к СТАРЫМ (DESC), реверсируем для отображения
             const reversed = chatMessages.reverse();
 
-            // Дешифруем сообщения, если E2EE готов
-            const currentSessionKey = sessionKeyRef.current || sessionKey; // Используем актуальный ключ из ref
+            // Используем sessionKey из ref (актуальный на момент вызова)
+            const currentSessionKey = sessionKeyRef.current;
+            const isE2EEReady = e2eeReadyRef.current;
+
             const decryptedMessages = await Promise.all(reversed.map(async (m) => {
                 let content = m.content;
                 let originalContent = null;
+                const isEncrypted = content && typeof content === 'string' &&
+                    content.includes('iv') && content.includes('ciphertext');
 
-                if (e2eeReady && currentSessionKey && content && content.includes('iv') && content.includes('ciphertext')) {
-                    // Сохраняем оригинальный контент для позднего дешифрования
-                    originalContent = content;
+                if (!isEncrypted) return { ...m, content, originalContent };
 
+                // Сохраняем оригинал для позднего дешифрования
+                originalContent = content;
+
+                if (isE2EEReady && currentSessionKey) {
                     try {
-                        // Логируем sessionKey для диагностики
-                        try {
-                            const exported = await window.crypto.subtle.exportKey('raw', currentSessionKey);
-                            const bytes = new Uint8Array(exported);
-                            const preview = Array.from(bytes.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('');
-                            console.log('[E2EE][decrypt] Session key preview:', preview + '...');
-                        } catch (e) {
-                            console.log('[E2EE][decrypt] Could not export session key for preview');
-                        }
-                        const encryptedData = JSON.parse(content);
-                        content = await decryptMessage(currentSessionKey, encryptedData);
-                        originalContent = null; // Если расшифровано успешно, не сохраняем оригинал
-                        console.log('[E2EE] Message decrypted from DB using X3DH + AES-GCM');
+                        content = await decryptMessage(currentSessionKey, JSON.parse(content));
+                        originalContent = null;
                     } catch (e) {
-                        // ИСПРАВЛЕНИЕ: Не пытаемся регенерировать ключ для групповых чатов!
-                        // Групповой ключ - это ОБЩИЙ ключ, который должен быть одинаковым у всех участников.
-                        // Регенерация случайного ключа не поможет расшифровать старые сообщения.
-
-                        const participants = selectedChat?.participants || [];
-                        const isGroupChat = participants.length > 2;
-
                         if (e.name === 'OperationError') {
-                            if (isGroupChat) {
-                                console.error('[E2EE] OperationError при дешифровании группового сообщения');
-                                console.error('[E2EE] Ключ шифрования не совпадает с ключом, которым было зашифровано сообщение');
-                                console.error('[E2EE] Для групповых чатов ключ должен синхронизироваться между участниками');
-                                content = '[Ошибка: неверный ключ шифрования]';
-                                originalContent = null;
-                            } else {
-                                // Для приватных чатов это означает, что сообщение зашифровано другим ключом
-                                console.warn('[E2EE] OperationError при дешифровании - ключ не подходит для сообщения ' + m.id);
-                                // Не пытаемся регенерировать ключ для исторических сообщений,
-                                // так как это создаст новый ключ и сломает текущую сессию
-                                content = '[Ошибка дешифрования: старый ключ]';
-                                originalContent = null;
-                            }
-                        } else {
-                            console.warn('[E2EE] Failed to decrypt message from DB:', e);
-                            content = '[Ошибка дешифрования]';
+                            const isGroup = (selectedChat?.participants || []).length > 2;
+                            content = isGroup ? '[Ошибка: неверный ключ группы]' : '🔑 Зашифровано другим ключом';
                             originalContent = null;
+                        } else {
+                            content = 'Инициализация шифрования...'; // Попробуем позже
                         }
                     }
-                } else if (!e2eeReady && content && content.includes('iv') && content.includes('ciphertext')) {
-                    // Session key ещё не готов, показываем placeholder
-                    console.log('[E2EE] Session key not ready yet, showing placeholder');
-                    originalContent = content; // Сохраняем оригинальный контент для позднего дешифрования
+                } else {
+                    // Ключ ещё не готов — placeholder, originalContent сохранён
                     content = 'Инициализация шифрования...';
                 }
                 return { ...m, content, originalContent };
@@ -206,7 +181,8 @@ const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => 
             if (loadChatMessages.cancelledRef !== cancelledRef || cancelledRef.cancelled) return;
             setIsLoadingMessages(false);
         }
-    }, [selectedChat, isLoadingMessages, PAGE_SIZE, sessionKey, e2eeReady, x3dhKeys, partnerId, ratchetManager, getCurrentUserId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedChat, isLoadingMessages, PAGE_SIZE]);
 
     // Функция загрузки информации о чате - обернута в useCallback
     const loadChatInfo = useCallback(async () => {
@@ -229,48 +205,28 @@ const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => 
     // Effect для загрузки сообщений при смене чата
     useEffect(() => {
         if (!selectedChat) {
-            // Очищаем состояние если чат не выбран
             setMessages([]);
             setChatInfo(null);
             lastLoadedChatId.current = null;
             isInitialScrollDone.current = false;
-            // ОЧИСТКА DoubleRatchetManager и sessionKey
-            if (partnerId && ratchetManager) {
-                ratchetManager.clearSession(partnerId);
-            }
-            setSessionKey(null);
-            setRatchetReady(false);
-            setPartnerId(null);
+            currentChatIdRef.current = null;
+            // Очищаем E2EE при отсутствии чата
+            sessionKeyRef.current = null;
+            e2eeReadyRef.current = false;
             return;
         }
 
-        // Загружаем сообщения только если чат изменился
         if (selectedChat.id !== lastLoadedChatId.current) {
-            // ОЧИСТКА DoubleRatchetManager и sessionKey при смене чата
-            if (partnerId && ratchetManager) {
-                ratchetManager.clearSession(partnerId);
-            }
-            setSessionKey(null);
-            setRatchetReady(false);
-            setPartnerId(null);
             // Отменяем предыдущие загрузки
-            if (loadingTimeoutRef.current) {
-                clearTimeout(loadingTimeoutRef.current);
-            }
-            // СРАЗУ очищаем старые сообщения для предотвращения мерцания
+            if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
             setMessages([]);
             isInitialScrollDone.current = false;
             lastLoadedChatId.current = selectedChat.id;
-            // ИСПРАВЛЕНИЕ: Сначала используем данные из selectedChat (если они есть)
-            if (selectedChat.participants) {
-                setChatInfo(selectedChat);
-            }
-            // Запускаем загрузку
+            if (selectedChat.participants) setChatInfo(selectedChat);
             loadChatMessages();
-            // Загружаем полную информацию о чате, но не перезаписываем статусы
             loadChatInfo();
         }
-    }, [selectedChat, loadChatMessages, loadChatInfo, partnerId, ratchetManager]);
+    }, [selectedChat, loadChatMessages, loadChatInfo]);
 
 
     // Функция отметки сообщений как прочитанных
@@ -309,100 +265,51 @@ const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => 
 
     // ==================== E2EE ИНИЦИАЛИЗАЦИЯ ====================
 
-    // Генерация X3DH ключей при монтировании компонента
+    // Ref для X3DH ключей — доступен синхронно без stale closure
+    const x3dhKeysRef = useRef(null);
+
+    // Шаг 1: загружаем/генерируем X3DH ключи ОДИН РАЗ при mount
     useEffect(() => {
         async function setupX3DH() {
             try {
                 const myUserId = getCurrentUserId();
-                if (!myUserId) {
-                    console.error('[E2EE] User ID not available');
-                    setKeyStatus('Ошибка: нет ID пользователя');
-                    return;
-                }
+                if (!myUserId) { setKeyStatus('Ошибка: нет ID пользователя'); return; }
 
-                // Пытаемся загрузить сохраненные ключи из localStorage
                 const savedKeysJson = localStorage.getItem(`x3dh_keys_${myUserId}`);
-
                 if (savedKeysJson) {
                     try {
                         const savedKeys = JSON.parse(savedKeysJson);
-                        console.log('[E2EE] Found saved X3DH keys in localStorage');
-
-                        // ВАЖНО: Проверяем актуальность ключей на сервере
+                        // Проверяем синхронизацию с сервером без регенерации
                         try {
                             const { default: userService } = await import('../services/userService');
                             const serverBundle = await userService.getPreKeyBundle(myUserId);
-
-                            if (serverBundle.identityKey !== savedKeys.identityPublic) {
-                                console.warn('[E2EE] Local X3DH keys DO NOT MATCH server keys!');
-                                console.log('[E2EE] Server identity key:', serverBundle.identityKey?.substring(0, 20) + '...');
-                                console.log('[E2EE] Local identity key:', savedKeys.identityPublic?.substring(0, 20) + '...');
-                                console.log('[E2EE] Regenerating X3DH keys to match server...');
-
-                                // Удаляем несовместимые ключи
-                                localStorage.removeItem(`x3dh_keys_${myUserId}`);
-
-                                // Очищаем все session keys т.к. они основаны на старых X3DH ключах
-                                Object.keys(localStorage).forEach(key => {
-                                    if (key.startsWith('e2ee_session_')) {
-                                        localStorage.removeItem(key);
-                                    }
-                                });
-
-                                // Форсируем перегенерацию (пропускаем восстановление)
-                                throw new Error('Keys mismatch - regenerating');
-                            } else {
-                                console.log('[E2EE] ✓ Local X3DH keys match server keys');
+                            const localPub = savedKeys.identityPublic;
+                            if (localPub && serverBundle.identityKey !== localPub) {
+                                console.warn('[E2EE] Local key differs from server — republishing');
+                                await userService.savePreKeyBundle(myUserId, localPub,
+                                    savedKeys.signedPrePublic || localPub, JSON.stringify([]), '');
                             }
-                        } catch (serverCheckError) {
-                            if (serverCheckError.message === 'Keys mismatch - regenerating') {
-                                throw serverCheckError; // Перебрасываем для регенерации
-                            }
-                            console.warn('[E2EE] Could not verify keys with server:', serverCheckError.message);
-                            // Продолжаем использовать локальные ключи
+                        } catch (checkErr) {
+                            console.warn('[E2EE] Server sync check failed:', checkErr.message);
                         }
-
-                        // Импортируем ключи обратно в CryptoKey формат
                         const identityKeyPair = {
-                            publicKey: await window.crypto.subtle.importKey(
-                                'raw',
+                            publicKey: await window.crypto.subtle.importKey('raw',
                                 Uint8Array.from(atob(savedKeys.identityPublic), c => c.charCodeAt(0)),
-                                { name: 'ECDH', namedCurve: 'P-256' },
-                                true,
-                                []
-                            ),
-                            privateKey: await window.crypto.subtle.importKey(
-                                'jwk',
+                                { name: 'ECDH', namedCurve: 'P-256' }, true, []),
+                            privateKey: await window.crypto.subtle.importKey('jwk',
                                 JSON.parse(savedKeys.identityPrivate),
-                                { name: 'ECDH', namedCurve: 'P-256' },
-                                true,
-                                ['deriveKey', 'deriveBits']
-                            )
+                                { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits'])
                         };
-
                         const signedPreKeyPair = {
-                            publicKey: await window.crypto.subtle.importKey(
-                                'raw',
+                            publicKey: await window.crypto.subtle.importKey('raw',
                                 Uint8Array.from(atob(savedKeys.signedPrePublic), c => c.charCodeAt(0)),
-                                { name: 'ECDH', namedCurve: 'P-256' },
-                                true,
-                                []
-                            ),
-                            privateKey: await window.crypto.subtle.importKey(
-                                'jwk',
+                                { name: 'ECDH', namedCurve: 'P-256' }, true, []),
+                            privateKey: await window.crypto.subtle.importKey('jwk',
                                 JSON.parse(savedKeys.signedPrePrivate),
-                                { name: 'ECDH', namedCurve: 'P-256' },
-                                true,
-                                ['deriveKey', 'deriveBits']
-                            )
+                                { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits'])
                         };
-
-                        const keys = {
-                            identityKeyPair,
-                            signedPreKeyPair,
-                            oneTimePreKeys: [] // Пока не используем
-                        };
-
+                        const keys = { identityKeyPair, signedPreKeyPair, oneTimePreKeys: [] };
+                        x3dhKeysRef.current = keys;
                         setX3dhKeys(keys);
                         console.log('[E2EE] X3DH keys restored from localStorage');
                         return;
@@ -412,50 +319,36 @@ const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => 
                     }
                 }
 
-                // Генерируем новые ключи если сохраненных нет
+                // Генерируем новые ключи
                 console.log('[E2EE] Generating new X3DH keys...');
                 const keys = await generateX3DHKeys();
-
-                // Экспортируем публичные ключи для отправки на сервер
                 const { exportX3DHBundle } = await import('../utils/crypto');
                 const bundle = await exportX3DHBundle(keys);
-
-                // Публикуем ключи на сервере
                 const { default: userService } = await import('../services/userService');
-                await userService.savePreKeyBundle(
-                    myUserId,
-                    bundle.identityKey,
-                    bundle.signedPreKey,
-                    bundle.oneTimePreKeys,
-                    null // signature пока не используем
-                );
+                await userService.savePreKeyBundle(myUserId, bundle.identityKey, bundle.signedPreKey, bundle.oneTimePreKeys, null);
 
-                // Сохраняем приватные ключи локально
                 const identityPrivateJwk = await window.crypto.subtle.exportKey('jwk', keys.identityKeyPair.privateKey);
                 const signedPrePrivateJwk = await window.crypto.subtle.exportKey('jwk', keys.signedPreKeyPair.privateKey);
-
-                const keysToSave = {
+                localStorage.setItem(`x3dh_keys_${myUserId}`, JSON.stringify({
                     identityPublic: bundle.identityKey,
                     identityPrivate: JSON.stringify(identityPrivateJwk),
                     signedPrePublic: bundle.signedPreKey,
                     signedPrePrivate: JSON.stringify(signedPrePrivateJwk)
-                };
-
-                localStorage.setItem(`x3dh_keys_${myUserId}`, JSON.stringify(keysToSave));
-
-                // ВАЖНО: Очищаем все старые session keys, т.к. X3DH ключи изменились
-                const keysToRemove = [];
+                }));
                 Object.keys(localStorage).forEach(key => {
-                    if (key.startsWith('e2ee_session_')) {
-                        keysToRemove.push(key);
+                    if (key.startsWith('e2ee_session_') || key.startsWith('e2ee_partner_fingerprint_'))
                         localStorage.removeItem(key);
-                    }
                 });
-
-                if (keysToRemove.length > 0) {
-                    console.log('[E2EE] Cleared', keysToRemove.length, 'old session keys (X3DH keys changed)');
+                const kekPwd = sessionStorage.getItem('kek_password');
+                if (kekPwd) {
+                    try {
+                        const { default: keyBackupSvc } = await import('../services/keyBackupService');
+                        await keyBackupSvc.uploadKeyBackup(kekPwd);
+                    } catch (backupErr) {
+                        console.warn('[E2EE] Auto-backup update failed:', backupErr.message);
+                    }
                 }
-
+                x3dhKeysRef.current = keys;
                 setX3dhKeys(keys);
                 console.log('[E2EE] X3DH keys generated and published to server');
             } catch (error) {
@@ -464,144 +357,122 @@ const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => 
             }
         }
         setupX3DH();
-    }, [getCurrentUserId]);
+    }, [getCurrentUserId]); // Только при mount
 
-    // Определение ID собеседника (для приватных чатов) или чата (для групповых)
+    // Шаг 2: при смене чата — устанавливаем session key единым потоком без гонок
     useEffect(() => {
-        if (!selectedChat || !user) {
-            setPartnerId(null);
-            setRatchetReady(false);
-            console.log('[E2EE] Нет выбранного чата или пользователя');
-            return;
-        }
+        if (!selectedChat || !user) return;
 
-        // Определяем тип чата по количеству участников (более надежно чем isGroup флаг)
+        const chatId = selectedChat.id;
+        currentChatIdRef.current = chatId;
+
+        // Немедленно сбрасываем E2EE состояние для нового чата
+        setPartnerId(null);
+        setSessionKey(null);
+        sessionKeyRef.current = null;
+        e2eeReadyRef.current = false;
+        hasReloadedAfterKeyRef.current = false; // Сброс чтобы placeholder-сообщения расшифровались заново
+        setRatchetReady(false);
+        setE2eeReady(false);
+        setKeyStatus('Инициализация E2EE...');
+
         const participants = selectedChat.participants || [];
-        const isGroupChat = participants.length > 2; // 2+ участника = групповой
+        const isGroupChat = participants.length > 2;
+        const partner = isGroupChat ? null : participants.find(p => p.id !== user.id);
+        const targetId = isGroupChat ? chatId : partner?.id ?? null;
 
-        console.log('[E2EE] Chat analysis - participants:', participants.length, 'isGroupFlag:', selectedChat.isGroup, 'determinedAsGroup:', isGroupChat);
-
-        if (!isGroupChat && participants.length === 2) {
-            // Приватный чат - ищем второго участника
-            const partner = participants.find(p => p.id !== user.id);
-            if (partner) {
-                setPartnerId(partner.id);
-                console.log('[E2EE] Partner ID set (private chat):', partner.id);
-            } else {
-                setPartnerId(null);
-                console.log('[E2EE] Partner not found in participants:', participants);
-            }
-        } else if (isGroupChat) {
-            // Групповой чат - используем chatId
-            setPartnerId(selectedChat.id);
-            console.log('[E2EE] Group chat ID set:', selectedChat.id, 'with', participants.length, 'participants');
-        } else {
-            // Одиночный чат (только один участник - сам с собой)?
-            setPartnerId(null);
-            console.log('[E2EE] Unknown chat type, participants:', participants.length);
-        }
-    }, [selectedChat, user]);
-
-    // Установление сессионного ключа через X3DH handshake (для приватных) или генерацию (для групповых)
-    useEffect(() => {
-        if (!selectedChat || !x3dhKeys) {
-            setSessionKey(null);
-            setRatchetReady(false);
-            console.log('[E2EE] Нет selectedChat или x3dhKeys', { selectedChat: selectedChat?.id, x3dhKeys: !!x3dhKeys });
+        if (!targetId) {
+            console.warn('[E2EE] Could not determine targetId for chat', chatId);
             return;
         }
+        setPartnerId(targetId);
+        console.log('[E2EE] Chat:', chatId, isGroupChat ? 'GROUP' : 'PRIVATE', 'targetId:', targetId);
 
-        async function establishSessionKey() {
+        async function initE2EEForChat() {
             try {
-                const myUserId = getCurrentUserId();
-                // Определяем тип чата по количеству участников (более надежно)
-                const participants = selectedChat?.participants || [];
-                const isGroupChat = participants.length > 2;
-
-                // ВАЖНО: Для групповых чатов используем chatId, для приватных - partnerId
-                const targetId = isGroupChat ? selectedChat.id : partnerId;
-
-                if (!targetId) {
-                    console.warn('[E2EE] Target ID not ready', { isGroupChat, chatId: selectedChat.id, partnerId });
-                    return;
+                // Ждём X3DH ключей если ещё не готовы (до 10 секунд)
+                let keys = x3dhKeysRef.current;
+                if (!keys) {
+                    for (let i = 0; i < 100; i++) {
+                        await new Promise(r => setTimeout(r, 100));
+                        keys = x3dhKeysRef.current;
+                        if (keys) break;
+                    }
                 }
+                if (!keys) { setKeyStatus('Ошибка: ключи не загружены'); return; }
+                if (currentChatIdRef.current !== chatId) return; // Чат сменился пока ждали
 
-                console.log('[E2EE] Initializing E2EE for', isGroupChat ? 'group chat' : 'private chat', ':', targetId, 'myUserId:', myUserId, 'participants:', participants.length);
-
+                const myUserId = getCurrentUserId();
                 let session;
 
                 if (isGroupChat) {
-                    //Используется только для тестирования.
-                    console.log('[E2EE] Using DETERMINISTIC group key (NOT SECURE - for testing only!)');
-                    console.log('[E2EE] Generating deterministic key for group chat:', targetId);
-
-                    // Создаем детерминированный ключ из chatId
-                    const keyMaterial = `group-chat-key-${targetId}`;
-                    const keyMaterialBytes = new TextEncoder().encode(keyMaterial);
-
-                    // Используем SHA-256 для генерации 256-битного ключа
-                    const keyHash = await window.crypto.subtle.digest('SHA-256', keyMaterialBytes);
-
-                    // Импортируем как AES-GCM ключ
-                    session = await window.crypto.subtle.importKey(
-                        'raw',
-                        keyHash,
-                        { name: 'AES-GCM' },
-                        true,
-                        ['encrypt', 'decrypt']
-                    );
-
-                    // Логируем первые байты для отладки
-                    const keyBytes = new Uint8Array(keyHash);
-                    const keyPreview = Array.from(keyBytes.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('');
-                    console.log('[E2EE] ✓ Deterministic group key preview:', keyPreview + '...');
-                    console.log('[E2EE] All participants of chat', targetId, 'will have THE SAME key');
+                    const keyHash = await window.crypto.subtle.digest('SHA-256',
+                        new TextEncoder().encode(`group-chat-key-${targetId}`));
+                    session = await window.crypto.subtle.importKey('raw', keyHash,
+                        { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+                    console.log('[E2EE] ✓ Group key ready for chat:', chatId);
                 } else {
-                    // Для приватных чатов: используем X3DH handshake
                     session = await loadSessionKey(myUserId, targetId);
-
-                    if (session) {
-                        // Проверяем, что sessionKey действительно для этой пары
-                        const keyName = getStorageKey(myUserId, targetId);
-                        if (!localStorage.getItem(keyName)) {
-                            console.warn('[E2EE] Session key в хранилище не найден для пары:', keyName);
-                            session = null;
-                        } else {
-                            console.log('[E2EE] ✓ Session key найден в хранилище для пары:', keyName);
-                        }
+                    if (session && !localStorage.getItem(getStorageKey(myUserId, targetId))) {
+                        session = null;
                     }
-
                     if (!session) {
-                        // Создаем новый session key через X3DH handshake для этой пары
-                        console.log('[E2EE] No saved key found, performing X3DH handshake with partner:', targetId);
-                        session = await performX3DHHandshake(x3dhKeys, targetId, myUserId);
+                        console.log('[E2EE] Performing X3DH handshake with partner:', targetId);
+                        session = await performX3DHHandshake(keys, targetId, myUserId);
                         await saveSessionKey(myUserId, targetId, session);
-                        console.log('[E2EE] ✓ New session key created and saved for pair:', myUserId, targetId);
+                        console.log('[E2EE] ✓ New session key created for pair:', myUserId, targetId);
                     } else {
-                        console.log('[E2EE] ✓ Loaded existing session key from storage for pair:', myUserId, targetId);
+                        console.log('[E2EE] ✓ Loaded session key from storage');
                     }
                 }
 
-                setSessionKey(session);
+                if (currentChatIdRef.current !== chatId) return; // Финальная проверка гонки
 
-                // Инициализируем Double Ratchet менеджер с session key
-                await ratchetManager.initSession(targetId, session);
+                sessionKeyRef.current = session;
+                e2eeReadyRef.current = true;
+                setSessionKey(session);
                 setRatchetReady(true);
-                setKeyStatus('🔒 Чат защищён (E2EE + Forward Secrecy)');
-                console.log('[E2EE] ✓ Session ready for encryption/decryption');
+                setE2eeReady(true);
+                setKeyStatus('🔒 Чат защищён (E2EE)');
+                await ratchetManager.initSession(targetId, session);
+                console.log('[E2EE] ✓ E2EE ready for chat:', chatId);
+
+                // Расшифровываем placeholder-сообщения
+                setMessages(prev => {
+                    const hasPlaceholders = prev.some(m =>
+                        (m.content === 'Инициализация шифрования...' || m.content === '[Ожидание ключа шифрования]')
+                        && m.originalContent
+                    );
+                    if (!hasPlaceholders) return prev;
+                    (async () => {
+                        for (const msg of prev) {
+                            if (!msg.originalContent) continue;
+                            if (currentChatIdRef.current !== chatId) break;
+                            try {
+                                const dec = await decryptMessage(session, JSON.parse(msg.originalContent));
+                                setMessages(p => p.map(m => m.id === msg.id
+                                    ? { ...m, content: dec, originalContent: null } : m));
+                            } catch {
+                                setMessages(p => p.map(m => m.id === msg.id
+                                    ? { ...m, content: '🔑 Ошибка дешифрования', originalContent: null } : m));
+                            }
+                        }
+                    })();
+                    return prev;
+                });
             } catch (error) {
-                console.error('[E2EE] E2EE initialization failed:', error);
-                setKeyStatus('Ошибка установления сессии');
+                console.error('[E2EE] E2EE init failed for chat', chatId, ':', error);
+                setKeyStatus('Ошибка E2EE');
                 setRatchetReady(false);
             }
         }
-        establishSessionKey();
-    }, [x3dhKeys, ratchetManager, getCurrentUserId, selectedChat, partnerId]);
+        initE2EEForChat();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedChat?.id, user?.id]); // Только при смене chatId или userId!
 
     // Синхронизируем sessionKeyRef с sessionKey для избежания stale closure
     useEffect(() => {
         sessionKeyRef.current = sessionKey;
-        console.log('[E2EE] sessionKeyRef synchronized with sessionKey');
     }, [sessionKey]);
 
     // Обновляем сообщения с placeholder'ами когда sessionKey становится готовым
@@ -843,41 +714,6 @@ const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => 
         return () => clearInterval(interval);
     }, [selectedChat?.id]);
 
-    // Сброс e2eeReady при смене чата
-    useEffect(() => {
-        if (selectedChat && selectedChat.id !== lastLoadedChatId.current) {
-            setE2eeReady(false);
-        }
-    }, [selectedChat]);
-
-    // После успешной инициализации sessionKey и ratchetManager
-    useEffect(() => {
-        if (sessionKey && ratchetReady) {
-            setE2eeReady(true);
-        }
-    }, [sessionKey, ratchetReady]);
-
-    // Очищаем и перезагружаем при смене partnerId
-    useEffect(() => {
-        if (!selectedChat) return;
-
-        // Если partnerId изменился и у нас уже есть загруженные сообщения,
-        // нужно очистить sessionKey и перезагрузить
-        const participants = selectedChat.participants || [];
-        const isGroupChat = participants.length > 2;
-
-        // Для групповых чатов partnerId должен быть chatId
-        const expectedPartnerId = isGroupChat ? selectedChat.id : partnerId;
-
-        if (partnerId !== expectedPartnerId && messages.length > 0) {
-            console.log('[E2EE] Partner ID mismatch detected, clearing session key and reloading');
-            console.log('[E2EE] Expected:', expectedPartnerId, 'Got:', partnerId, 'IsGroup:', isGroupChat);
-            // Очищаем старый ключ
-            setSessionKey(null);
-            setE2eeReady(false);
-            hasReloadedAfterKeyRef.current = false;
-        }
-    }, [partnerId, selectedChat, messages.length]);
 
     // Очистка таймаутов при размонтировании
     useEffect(() => {
@@ -1063,9 +899,36 @@ const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => 
                                 if (decryptError.name === 'OperationError') {
                                     const participants = selectedChat?.participants || [];
                                     const isGroupChat = participants.length > 2;
-                                    decryptedContent = isGroupChat
-                                        ? 'Зашифровано устаревшим ключом группы'
-                                        : 'Зашифровано другим ключом';
+
+                                    if (!isGroupChat && x3dhKeys) {
+                                        // Приватный чат: пересчитываем session key принудительно
+                                        console.warn('[E2EE] Session key mismatch — forcing X3DH re-handshake with partner:', partnerId);
+                                        try {
+                                            const myUserId = getCurrentUserId();
+                                            const { removeSessionKey } = await import('../utils/sessionKeyStorage');
+                                            removeSessionKey(myUserId, partnerId);
+
+                                            const newSession = await performX3DHHandshake(x3dhKeys, partnerId, myUserId);
+                                            const { saveSessionKey: saveKey } = await import('../utils/sessionKeyStorage');
+                                            await saveKey(myUserId, partnerId, newSession);
+
+                                            // Обновляем ключ в state и ref
+                                            setSessionKey(newSession);
+                                            sessionKeyRef.current = newSession;
+
+                                            // Пробуем расшифровать снова новым ключом
+                                            const encryptedData = JSON.parse(message.content);
+                                            decryptedContent = await decryptMessage(newSession, encryptedData);
+                                            console.log('[E2EE] ✓ Re-decrypted after key refresh:', decryptedContent.substring(0, 50));
+                                        } catch (retryErr) {
+                                            console.error('[E2EE] Re-decrypt after key refresh also failed:', retryErr);
+                                            decryptedContent = '🔑 Ключи обновлены. Повторите отправку.';
+                                        }
+                                    } else {
+                                        decryptedContent = isGroupChat
+                                            ? '🔑 Устаревший ключ группы'
+                                            : '🔑 Ключи обновлены. Повторите отправку.';
+                                    }
                                 } else {
                                     decryptedContent = 'Ошибка дешифрования';
                                 }
@@ -1168,7 +1031,7 @@ const ChatWindow = ({ selectedChat, onChatUpdate, onStartCall, callActive }) => 
             // Отписываемся при размонтировании компонента
             if (typeof unsubscribeChatEvents === 'function') unsubscribeChatEvents();
         };
-    }, [selectedChat?.id, selectedChat, loadChatInfo, getCurrentUserId, e2eeReady, ratchetReady, onChatUpdate]);
+    }, [selectedChat?.id, selectedChat, loadChatInfo, getCurrentUserId, e2eeReady, ratchetReady, onChatUpdate, x3dhKeys, partnerId]);
 
     // После рендера сообщений восстанавливаем scroll к первому видимому сообщению
     useLayoutEffect(() => {

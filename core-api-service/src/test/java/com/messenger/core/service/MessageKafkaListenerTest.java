@@ -23,6 +23,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class MessageKafkaListenerTest {
+
+    private static final String E2EE_CONTENT = "{\"iv\":\"dGVzdGl2MTIzNDU2\",\"ciphertext\":\"dGVzdGNpcGhlcg==\"}";
+
     private MessageRepository messageRepository;
     private ChatRepository chatRepository;
     private UserRepository userRepository;
@@ -85,7 +88,7 @@ class MessageKafkaListenerTest {
         data.put("type", "NEW_MESSAGE");
         data.put("senderId", 1L);
         data.put("chatId", 2L);
-        data.put("content", "Hello");
+        data.put("content", E2EE_CONTENT);
         data.put("messageType", "TEXT");
         String json = toJson(data);
         ConsumerRecord<String, String> record = new ConsumerRecord<>("chat-messages", 0, 0L, "key", json);
@@ -99,7 +102,7 @@ class MessageKafkaListenerTest {
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         Message savedMessage = new Message();
         savedMessage.setId(100L);
-        savedMessage.setContent("Hello");
+        savedMessage.setContent(E2EE_CONTENT);
         savedMessage.setMessageType(Message.MessageType.TEXT);
         savedMessage.setChat(chat);
         savedMessage.setSender(user);
@@ -118,7 +121,7 @@ class MessageKafkaListenerTest {
         data.put("type", "NEW_MESSAGE");
         data.put("senderId", 1L);
         data.put("chatId", 999L);
-        data.put("content", "Hello");
+        data.put("content", E2EE_CONTENT);
         data.put("messageType", "TEXT");
         String json = toJson(data);
         ConsumerRecord<String, String> record = new ConsumerRecord<>("chat-messages", 0, 0L, "key", json);
@@ -136,7 +139,7 @@ class MessageKafkaListenerTest {
         data.put("type", "NEW_MESSAGE");
         data.put("senderId", 999L);
         data.put("chatId", 2L);
-        data.put("content", "Hello");
+        data.put("content", E2EE_CONTENT);
         data.put("messageType", "TEXT");
         String json = toJson(data);
         ConsumerRecord<String, String> record = new ConsumerRecord<>("chat-messages", 0, 0L, "key", json);

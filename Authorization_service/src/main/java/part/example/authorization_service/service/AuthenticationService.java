@@ -3,6 +3,7 @@ package part.example.authorization_service.service;
 
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -25,6 +26,9 @@ import java.util.Optional;
 
 @Service
 public class AuthenticationService {
+
+    @Value("${core-api.url:http://core-api-service:8082}")
+    private String coreApiUrl;
 
     @Autowired
     private UserRepository userRepository;
@@ -64,11 +68,11 @@ public class AuthenticationService {
             System.out.println("[REGISTER] Пользователь сохранён: " + savedUser.getId());
             String token = jwtUtil.generateToken(savedUser);
             // --- Вызов core-api-service для генерации prekey bundle ---
-            String coreApiUrl = "http://localhost:8083/api/users/" + savedUser.getId() + "/prekey-bundle";
-            System.out.println("[REGISTER] Вызов core-api-service: " + coreApiUrl);
+            String prekeyBundleUrl = coreApiUrl + "/api/users/" + savedUser.getId() + "/prekey-bundle";
+            System.out.println("[REGISTER] Вызов core-api-service: " + prekeyBundleUrl);
             webClientBuilder.build()
                 .post()
-                .uri(coreApiUrl)
+                .uri(prekeyBundleUrl)
                 .header("Authorization", "Bearer " + token)
                 .bodyValue(Map.of(
                     "identityKey", "",

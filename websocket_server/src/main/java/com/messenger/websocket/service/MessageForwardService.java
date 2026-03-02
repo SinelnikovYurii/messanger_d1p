@@ -10,6 +10,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.messenger.websocket.model.WebSocketMessage;
 import com.messenger.websocket.model.MessageType;
@@ -26,7 +27,8 @@ import java.util.Properties;
 @RequiredArgsConstructor
 public class MessageForwardService {
 
-    private final String kafkaBootstrapServers = "localhost:9092";
+    @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
+    private String kafkaBootstrapServers;
     private final ObjectMapper objectMapper;
     private final SessionManager sessionManager;
     private KafkaConsumer<String, String> consumer;

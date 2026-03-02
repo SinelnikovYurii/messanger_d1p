@@ -70,6 +70,15 @@ public class User {
     @Column(name = "one_time_prekeys", columnDefinition = "TEXT") // JSON-массив
     private String oneTimePreKeys;
 
+    /**
+     * Зашифрованный бекап приватных ключей E2EE.
+     * Хранится в формате JSON: { iv, salt, ciphertext } — всё в Base64.
+     * Ключ шифрования (KEK) производится из пароля пользователя только на клиенте.
+     * Сервер не знает пароль и не может расшифровать данные.
+     */
+    @Column(name = "encrypted_key_backup", columnDefinition = "TEXT")
+    private String encryptedKeyBackup;
+
     // Чаты, в которых участвует пользователь
     @ManyToMany(mappedBy = "participants", fetch = FetchType.LAZY)
     @BatchSize(size = 16)

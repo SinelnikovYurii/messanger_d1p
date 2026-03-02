@@ -1,0 +1,7 @@
+node_modules/
+build/
+.idea/
+*.iml
+.git/
+.gitignore
+*.md

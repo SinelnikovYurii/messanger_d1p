@@ -3,7 +3,10 @@
  * Используют публичный endpoint без JWT авторизации
  */
 
-const GATEWAY_URL = 'http://localhost:8083';
+// В проде фронт раздаётся nginx, который сам проксирует /avatars на Gateway → пустой baseURL
+const isDev = process.env.NODE_ENV === 'development';
+const GATEWAY_URL = process.env.REACT_APP_GATEWAY_URL ||
+  (isDev ? 'http://localhost:8083' : '');
 
 /**
  * Получить полный URL аватарки

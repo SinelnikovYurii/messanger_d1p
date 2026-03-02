@@ -3,8 +3,6 @@ package com.messenger.websocket.model;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.Test;
-import com.messenger.websocket.model.MessageType;
-import com.messenger.websocket.model.WebSocketMessage;
 
 import java.time.LocalDateTime;
 
@@ -63,8 +61,14 @@ public class WebSocketMessageTest {
     @Test
     void testAllArgsConstructor() {
         LocalDateTime now = LocalDateTime.now();
-        WebSocketMessage msg = new WebSocketMessage(1L, MessageType.USER_ONLINE, "hi", "token", 2L, 3L, 4L, "user", "sender", now,
-                "IMAGE", "url", "file.png", 200L, "image/png", "thumb", 5L, 6L, "reader", now, false);
+        WebSocketMessage msg = new WebSocketMessage(
+                1L, MessageType.USER_ONLINE, "hi", "token",
+                2L, 3L, 4L,
+                "user", "sender", now,
+                "IMAGE", "url", "file.png",
+                200L, "image/png", "thumb",
+                5L, 6L, "reader",
+                now, false);
         assertEquals(1L, msg.getId());
         assertEquals(MessageType.USER_ONLINE, msg.getType());
         assertEquals("hi", msg.getContent());
@@ -86,6 +90,42 @@ public class WebSocketMessageTest {
         assertEquals("reader", msg.getReaderUsername());
         assertEquals(now, msg.getLastSeen());
         assertFalse(msg.getIsOnline());
+        // WebRTC поля должны быть null (не переданы)
+        assertNull(msg.getCallId());
+        assertNull(msg.getTargetUserId());
+        assertNull(msg.getSdp());
+        assertNull(msg.getSdpType());
+        assertNull(msg.getCandidate());
+        assertNull(msg.getSdpMid());
+        assertNull(msg.getSdpMLineIndex());
+        assertNull(msg.getCallType());
+    }
+
+    @Test
+    void testFullArgsConstructor() {
+        LocalDateTime now = LocalDateTime.now();
+        WebSocketMessage msg = new WebSocketMessage(
+                1L, MessageType.CALL_OFFER, "hi", "token",
+                2L, 3L, 4L,
+                "user", "sender", now,
+                "TEXT", "url", "file.png",
+                200L, "image/png", "thumb",
+                5L, 6L, "reader",
+                now, false,
+                "call-uuid-123", 7L,
+                "sdp-offer-data", "offer",
+                "{\"candidate\":\"...\"}",
+                "audio", 0, "video");
+        assertEquals(1L, msg.getId());
+        assertEquals(MessageType.CALL_OFFER, msg.getType());
+        assertEquals("call-uuid-123", msg.getCallId());
+        assertEquals(7L, msg.getTargetUserId());
+        assertEquals("sdp-offer-data", msg.getSdp());
+        assertEquals("offer", msg.getSdpType());
+        assertEquals("{\"candidate\":\"...\"}", msg.getCandidate());
+        assertEquals("audio", msg.getSdpMid());
+        assertEquals(0, msg.getSdpMLineIndex());
+        assertEquals("video", msg.getCallType());
     }
 
     @Test

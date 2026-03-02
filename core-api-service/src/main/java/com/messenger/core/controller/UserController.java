@@ -396,4 +396,60 @@ public class UserController {
         }
         return ResponseEntity.ok(bundle);
     }
+
+    /**
+     * Сохранить зашифрованный бекап E2EE ключей пользователя.
+     * Тело запроса: { "encryptedPayload": "..." } — JSON-blob зашифрованных ключей.
+     * Сервер не знает пароль шифрования и не может расшифровать данные.
+     */
+    @PostMapping("/me/key-backup")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<?> saveKeyBackup(
+            @RequestBody Map<String, String> body,
+            HttpServletRequest httpRequest) {
+        String userIdHeader = httpRequest.getHeader("x-user-id");
+        if (userIdHeader == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Не указан ID пользователя"));
+        }
+        String encryptedPayload = body.get("encryptedPayload");
+        if (encryptedPayload == null || encryptedPayload.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "encryptedPayload обязателен"));
+        }
+        try {
+            Long userId = Long.parseLong(userIdHeader);
+            userService.saveEncryptedKeyBackup(userId, encryptedPayload);
+            return ResponseEntity.ok(Map.of("status", "ok"));
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Некорректный формат ID"));
+        } catch (Exception e) {
+            log.error("Ошибка при сохранении бекапа ключей: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Получить зашифрованный бекап E2EE ключей текущего пользователя.
+     * Возвращает { "encryptedPayload": "..." } или 404 если бекап не найден.
+     */
+    @GetMapping("/me/key-backup")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<?> getKeyBackup(HttpServletRequest httpRequest) {
+        String userIdHeader = httpRequest.getHeader("x-user-id");
+        if (userIdHeader == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Не указан ID пользователя"));
+        }
+        try {
+            Long userId = Long.parseLong(userIdHeader);
+            String encryptedPayload = userService.getEncryptedKeyBackup(userId);
+            if (encryptedPayload == null || encryptedPayload.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(Map.of("encryptedPayload", encryptedPayload));
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Некорректный формат ID"));
+        } catch (Exception e) {
+            log.error("Ошибка при получении бекапа ключей: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }

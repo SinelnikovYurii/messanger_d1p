@@ -1,13 +1,22 @@
 import axios from 'axios';
 import { ErrorHandler } from '../utils/errorHandler';
 
+// ── Динамическое определение URL ─────────────────────────────────────────────
+const isDev = process.env.NODE_ENV === 'development';
+const GATEWAY_HTTP = process.env.REACT_APP_GATEWAY_URL ||
+  (isDev ? 'http://localhost:8083' : '');  // '' = относительный путь (nginx в prod)
+const GATEWAY_WS = process.env.REACT_APP_WS_URL ||
+  (isDev
+    ? 'ws://localhost:8083'
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`);
+
 // URL конфигурация
-export const CHAT_SERVER_URL = 'ws://localhost:8083/ws';
-export const CHAT_SERVER_URL_DIRECT = 'ws://localhost:8083/ws';
+export const CHAT_SERVER_URL = `${GATEWAY_WS}/ws`;
+export const CHAT_SERVER_URL_DIRECT = `${GATEWAY_WS}/ws`;
 
 // Создаем основной API клиент через Gateway
 const api = axios.create({
-  baseURL: 'http://localhost:8083', // Gateway порт
+  baseURL: GATEWAY_HTTP, // Gateway порт
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -44,7 +53,7 @@ api.interceptors.response.use(
 
 // Специфичные API клиенты для разных сервисов
 export const authApi = axios.create({
-  baseURL: 'http://localhost:8083', // Gateway
+  baseURL: GATEWAY_HTTP, // Gateway
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -52,7 +61,7 @@ export const authApi = axios.create({
 });
 
 export const chatApi = axios.create({
-  baseURL: 'http://localhost:8083', // Gateway
+  baseURL: GATEWAY_HTTP, // Gateway
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -60,7 +69,7 @@ export const chatApi = axios.create({
 });
 
 export const userApi = axios.create({
-  baseURL: 'http://localhost:8083', // Gateway
+  baseURL: GATEWAY_HTTP, // Gateway
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -68,7 +77,7 @@ export const userApi = axios.create({
 });
 
 export const messageApi = axios.create({
-  baseURL: 'http://localhost:8083', // Gateway
+  baseURL: GATEWAY_HTTP, // Gateway
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -76,7 +85,7 @@ export const messageApi = axios.create({
 });
 
 export const gatewayApi = axios.create({
-  baseURL: 'http://localhost:8083', // Gateway
+  baseURL: GATEWAY_HTTP, // Gateway
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

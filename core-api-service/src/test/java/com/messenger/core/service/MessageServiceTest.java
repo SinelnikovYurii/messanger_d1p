@@ -27,6 +27,9 @@ import java.util.Set;
 import java.util.HashSet;
 
 class MessageServiceTest {
+
+    private static final String E2EE_CONTENT = "{\"iv\":\"dGVzdGl2MTIzNDU2\",\"ciphertext\":\"dGVzdGNpcGhlcg==\"}";
+
     @Mock private MessageRepository messageRepository;
     @Mock private ChatRepository chatRepository;
     @Mock private UserRepository userRepository;
@@ -47,18 +50,18 @@ class MessageServiceTest {
         chat.setParticipants(new HashSet<>(List.of(user)));
         Message message = new Message();
         message.setId(10L);
-        message.setContent("Hello!");
+        message.setContent(E2EE_CONTENT);
         message.setSender(user);
         message.setChat(chat);
         MessageDto.SendMessageRequest request = new MessageDto.SendMessageRequest();
         request.setChatId(5L);
-        request.setContent("Hello!");
+        request.setContent(E2EE_CONTENT);
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(chatRepository.findById(5L)).thenReturn(Optional.of(chat));
         when(messageRepository.save(any(Message.class))).thenReturn(message);
         MessageDto result = messageService.sendMessage(1L, request);
         assertNotNull(result);
-        assertEquals("Hello!", result.getContent());
+        assertEquals(E2EE_CONTENT, result.getContent());
     }
 
     @Test
@@ -284,12 +287,14 @@ class MessageServiceTest {
 
     @Test
     void testSendTooLongMessage() {
+        // Сервис не имеет лимита на длину — E2EE JSON с длинным ciphertext проходит валидацию
+        // Тест проверяет что пустой content отклоняется (E2EE-проверка)
         User user = new User(); user.setId(1L);
         Chat chat = new Chat(); chat.setId(5L);
         chat.setParticipants(new HashSet<>(List.of(user)));
         MessageDto.SendMessageRequest request = new MessageDto.SendMessageRequest();
         request.setChatId(5L);
-        request.setContent("a".repeat(10001)); // Предположим лимит 10000
+        request.setContent("a".repeat(10001)); // plain text — не E2EE, должно быть отклонено
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(chatRepository.findById(5L)).thenReturn(Optional.of(chat));
         assertThrows(IllegalArgumentException.class, () -> messageService.sendMessage(1L, request));
@@ -312,7 +317,7 @@ class MessageServiceTest {
         chat.setParticipants(new HashSet<>(List.of(user)));
         Message message = new Message();
         message.setId(10L);
-        message.setContent("File message");
+        message.setContent(E2EE_CONTENT);
         message.setSender(user);
         message.setChat(chat);
         message.setFileUrl("file.png");
@@ -320,7 +325,7 @@ class MessageServiceTest {
         message.setFileSize(123L);
         MessageDto.SendMessageRequest request = new MessageDto.SendMessageRequest();
         request.setChatId(5L);
-        request.setContent("File message");
+        request.setContent(E2EE_CONTENT);
         request.setFileUrl("file.png");
         request.setFileName("file.png");
         request.setFileSize(123L);
@@ -341,13 +346,13 @@ class MessageServiceTest {
         Message replyMsg = new Message(); replyMsg.setId(99L);
         Message message = new Message();
         message.setId(10L);
-        message.setContent("Reply message");
+        message.setContent(E2EE_CONTENT);
         message.setSender(user);
         message.setChat(chat);
         message.setReplyToMessage(replyMsg);
         MessageDto.SendMessageRequest request = new MessageDto.SendMessageRequest();
         request.setChatId(5L);
-        request.setContent("Reply message");
+        request.setContent(E2EE_CONTENT);
         request.setReplyToMessageId(99L);
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(chatRepository.findById(5L)).thenReturn(Optional.of(chat));
@@ -364,13 +369,13 @@ class MessageServiceTest {
         chat.setParticipants(new HashSet<>(List.of(user)));
         Message message = new Message();
         message.setId(10L);
-        message.setContent("Image message");
+        message.setContent(E2EE_CONTENT);
         message.setSender(user);
         message.setChat(chat);
         message.setMessageType(Message.MessageType.IMAGE);
         MessageDto.SendMessageRequest request = new MessageDto.SendMessageRequest();
         request.setChatId(5L);
-        request.setContent("Image message");
+        request.setContent(E2EE_CONTENT);
         request.setMessageType(Message.MessageType.IMAGE);
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(chatRepository.findById(5L)).thenReturn(Optional.of(chat));

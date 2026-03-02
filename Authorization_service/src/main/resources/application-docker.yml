@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:messenger_db}
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:9911}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+jwt:
+  secret: ${JWT_SECRET:SYDLF52DangerKeySYDLF9911894325962389476582937465986348957632897562387ww7sfusdfy9374hguif738794fgu9iw3g4f987uswuhfiuGIUDS9GDUSWHTPIWEHYS0DFS098DF98SDFSHDFUSH9374FISDU87SADASUDGHGHAISD7A9OSD823UGHRUIHGSDW9D78Y238RUIOSWADHFOUWHSSDFDDUHWWF9384FGSD}
+
+core-api:
+  url: http://${CORE_API_HOST:core-api-service}:${CORE_API_PORT:8082}
+

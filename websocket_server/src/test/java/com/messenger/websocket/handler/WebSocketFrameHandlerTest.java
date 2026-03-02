@@ -13,6 +13,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import com.messenger.websocket.handler.WebSocketFrameHandler;
 import com.messenger.websocket.model.MessageType;
 import com.messenger.websocket.model.WebSocketMessage;
+import com.messenger.websocket.service.CallSessionManager;
 import com.messenger.websocket.service.JwtAuthService;
 import com.messenger.websocket.service.SessionManager;
 
@@ -24,12 +25,13 @@ public class WebSocketFrameHandlerTest {
     private ObjectMapper objectMapper;
     private SessionManager sessionManager;
     private KafkaTemplate<String, String> kafkaTemplate;
+    private CallSessionManager callSessionManager;
     private TestableWebSocketFrameHandler testableHandler;
     private ChannelHandlerContext ctx;
 
     static class TestableWebSocketFrameHandler extends WebSocketFrameHandler {
-        public TestableWebSocketFrameHandler(JwtAuthService jwtAuthService, ObjectMapper objectMapper, SessionManager sessionManager, KafkaTemplate<String, String> kafkaTemplate) {
-            super(jwtAuthService, objectMapper, sessionManager, kafkaTemplate);
+        public TestableWebSocketFrameHandler(JwtAuthService jwtAuthService, ObjectMapper objectMapper, SessionManager sessionManager, KafkaTemplate<String, String> kafkaTemplate, CallSessionManager callSessionManager) {
+            super(jwtAuthService, objectMapper, sessionManager, kafkaTemplate, callSessionManager);
         }
         @Override
         public void channelRead0(ChannelHandlerContext ctx, WebSocketFrame frame) throws Exception {
@@ -43,7 +45,8 @@ public class WebSocketFrameHandlerTest {
         objectMapper = mock(ObjectMapper.class);
         sessionManager = mock(SessionManager.class);
         kafkaTemplate = mock(KafkaTemplate.class);
-        testableHandler = new TestableWebSocketFrameHandler(jwtAuthService, objectMapper, sessionManager, kafkaTemplate);
+        callSessionManager = mock(CallSessionManager.class);
+        testableHandler = new TestableWebSocketFrameHandler(jwtAuthService, objectMapper, sessionManager, kafkaTemplate, callSessionManager);
         ctx = mock(ChannelHandlerContext.class);
         when(ctx.channel()).thenReturn(mock(io.netty.channel.Channel.class));
         when(ctx.channel().id()).thenReturn(mock(io.netty.channel.ChannelId.class));

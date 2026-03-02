@@ -2,7 +2,6 @@ package com.messenger.websocket.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -10,7 +9,6 @@ import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WebSocketMessage {
 
@@ -26,7 +24,7 @@ public class WebSocketMessage {
     private LocalDateTime timestamp;
 
     // Поля для поддержки файлов
-    private String messageType; // Тип сообщения как строка: TEXT, IMAGE, FILE
+    private String messageType;
     private String fileUrl;
     private String fileName;
     private Long fileSize;
@@ -34,23 +32,23 @@ public class WebSocketMessage {
     private String thumbnailUrl;
 
     // Поля для поддержки MESSAGE_READ уведомлений
-    private Long messageId; // ID прочитанного сообщения
-    private Long readerId; // ID пользователя, который прочитал
-    private String readerUsername; // Имя пользователя, который прочитал
+    private Long messageId;
+    private Long readerId;
+    private String readerUsername;
 
     // Поле для онлайн-статуса
-    private LocalDateTime lastSeen; // Время последнего визита (для USER_OFFLINE)
-    private Boolean isOnline; // Статус онлайн (для USER_ONLINE/USER_OFFLINE)
+    private LocalDateTime lastSeen;
+    private Boolean isOnline;
 
     // ===== Поля WebRTC сигналинга =====
-    private String callId;       // Уникальный ID звонка (UUID)
-    private Long targetUserId;   // Кому адресован звонок/сигнал
-    private String sdp;          // SDP offer / answer
-    private String sdpType;      // "offer" | "answer"
-    private String candidate;    // ICE candidate JSON строка
-    private String sdpMid;       // ICE candidate sdpMid
-    private Integer sdpMLineIndex; // ICE candidate sdpMLineIndex
-    private String callType;     // "audio" | "video"
+    private String callId;
+    private Long targetUserId;
+    private String sdp;
+    private String sdpType;
+    private String candidate;
+    private String sdpMid;
+    private Integer sdpMLineIndex;
+    private String callType;
 
     @JsonProperty("type")
     public MessageType getTypeEnum() {
@@ -62,14 +60,14 @@ public class WebSocketMessage {
         this.type = mt;
     }
 
-    // Конструктор для быстрого создания сообщений
+    /** Конструктор для быстрого создания сообщений (2 аргумента) */
     public WebSocketMessage(MessageType type, String content) {
         this.type = type;
         this.content = content;
         this.timestamp = LocalDateTime.now();
     }
 
-    // Конструктор для чат сообщений
+    /** Конструктор для чат-сообщений (5 аргументов) */
     public WebSocketMessage(MessageType type, String content, Long chatId, Long userId, String username) {
         this.type = type;
         this.content = content;
@@ -78,4 +76,62 @@ public class WebSocketMessage {
         this.username = username;
         this.timestamp = LocalDateTime.now();
     }
+
+    /** Конструктор без WebRTC-полей — 21 аргумент (используется в тестах) */
+    public WebSocketMessage(Long id, MessageType type, String content, String token,
+                            Long chatId, Long userId, Long senderId,
+                            String username, String senderUsername,
+                            LocalDateTime timestamp,
+                            String messageType, String fileUrl, String fileName,
+                            Long fileSize, String mimeType, String thumbnailUrl,
+                            Long messageId, Long readerId, String readerUsername,
+                            LocalDateTime lastSeen, Boolean isOnline) {
+        this.id = id;
+        this.type = type;
+        this.content = content;
+        this.token = token;
+        this.chatId = chatId;
+        this.userId = userId;
+        this.senderId = senderId;
+        this.username = username;
+        this.senderUsername = senderUsername;
+        this.timestamp = timestamp;
+        this.messageType = messageType;
+        this.fileUrl = fileUrl;
+        this.fileName = fileName;
+        this.fileSize = fileSize;
+        this.mimeType = mimeType;
+        this.thumbnailUrl = thumbnailUrl;
+        this.messageId = messageId;
+        this.readerId = readerId;
+        this.readerUsername = readerUsername;
+        this.lastSeen = lastSeen;
+        this.isOnline = isOnline;
+    }
+
+    /** Полный конструктор со всеми полями включая WebRTC — 29 аргументов */
+    public WebSocketMessage(Long id, MessageType type, String content, String token,
+                            Long chatId, Long userId, Long senderId,
+                            String username, String senderUsername,
+                            LocalDateTime timestamp,
+                            String messageType, String fileUrl, String fileName,
+                            Long fileSize, String mimeType, String thumbnailUrl,
+                            Long messageId, Long readerId, String readerUsername,
+                            LocalDateTime lastSeen, Boolean isOnline,
+                            String callId, Long targetUserId,
+                            String sdp, String sdpType, String candidate,
+                            String sdpMid, Integer sdpMLineIndex, String callType) {
+        this(id, type, content, token, chatId, userId, senderId, username, senderUsername,
+             timestamp, messageType, fileUrl, fileName, fileSize, mimeType, thumbnailUrl,
+             messageId, readerId, readerUsername, lastSeen, isOnline);
+        this.callId = callId;
+        this.targetUserId = targetUserId;
+        this.sdp = sdp;
+        this.sdpType = sdpType;
+        this.candidate = candidate;
+        this.sdpMid = sdpMid;
+        this.sdpMLineIndex = sdpMLineIndex;
+        this.callType = callType;
+    }
 }
+
