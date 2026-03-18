@@ -1,142 +1,228 @@
 package part.example.authorization_service.service;
 
-
-
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
-import part.example.authorization_service.DTO.AuthResponse;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import part.example.authorization_service.DTO.LoginRequest;
+import part.example.authorization_service.DTO.LoginResult;
 import part.example.authorization_service.DTO.RegisterRequest;
-import part.example.authorization_service.DTO.RegistrationResponse;
+import part.example.authorization_service.DTO.RegisterResult;
 import part.example.authorization_service.JWT.JwtUtil;
+import part.example.authorization_service.exception.BadCredentialsException;
+import part.example.authorization_service.exception.InvalidRequestException;
+import part.example.authorization_service.exception.UserAlreadyExistsException;
 import part.example.authorization_service.models.User;
 import part.example.authorization_service.repository.UserRepository;
 
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * Сервис аутентификации пользователей.
+ * <p>
+ * Отвечает за регистрацию и вход. Не знает об HTTP-слое —
+ * возвращает доменные объекты и бросает доменные исключения.
+ * Контроллер самостоятельно преобразует результаты в {@code ResponseEntity}.
+ */
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class AuthenticationService {
 
     @Value("${core-api.url:http://core-api-service:8082}")
     private String coreApiUrl;
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
+    private final WebClient.Builder webClientBuilder;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    /**
+     * Зарегистрировать нового пользователя.
+     * <p>
+     * Порядок проверок:
+     * <ol>
+     *   <li>Валидация обязательных полей запроса (до обращения к БД).</li>
+     *   <li>Проверка уникальности username.</li>
+     *   <li>Сохранение пользователя с хешированным паролем.</li>
+     *   <li>Генерация JWT-токена.</li>
+     *   <li>Асинхронный вызов core-api-service для инициализации E2EE prekey bundle.</li>
+     * </ol>
+     *
+     * @param request данные для регистрации
+     * @return {@link RegisterResult} с токеном и ID созданного пользователя
+     * @throws InvalidRequestException    если обязательные поля не заполнены
+     * @throws UserAlreadyExistsException если username уже занят
+     */
+    @Transactional
+    public RegisterResult register(RegisterRequest request) {
+        // 1. Валидация входных данных — до любых обращений к БД
+        validateRegisterRequest(request);
 
-    @Autowired
-    private JwtUtil jwtUtil;
+        // 2. Проверка уникальности username
+        if (userRepository.existsByUsername(request.getUsername())) {
+            log.warn("[REGISTER] Username '{}' уже занят", request.getUsername());
+            throw new UserAlreadyExistsException("Пользователь с таким именем уже существует");
+        }
 
-    @Autowired
-    private WebClient.Builder webClientBuilder;
+        // 3. Создание и сохранение пользователя
+        User user = new User(
+                request.getUsername(),
+                passwordEncoder.encode(request.getPassword()),
+                request.getEmail(),
+                request.getFirstName(),
+                request.getLastName()
+        );
+        User savedUser = userRepository.save(user);
+        log.info("[REGISTER] Пользователь '{}' сохранён с ID={}", savedUser.getUsername(), savedUser.getId());
 
-    public ResponseEntity<?> register(RegisterRequest request) {
-        try {
-            System.out.println("[REGISTER] Запрос: " + request);
-            if (userRepository.findByUsername(request.getUsername()).isPresent()) {
-                System.out.println("[REGISTER] Пользователь с таким именем уже существует: " + request.getUsername());
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Пользователь с таким именем уже существует"));
-            }
-            if (request.getUsername() == null || request.getUsername().isEmpty() ||
-                request.getPassword() == null || request.getPassword().isEmpty() ||
-                request.getEmail() == null || request.getEmail().isEmpty()) {
-                System.out.println("[REGISTER] Не все обязательные поля заполнены: " + request);
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Все обязательные поля должны быть заполнены"));
-            }
-            User user = new User();
-            user.setUsername(request.getUsername());
-            user.setEmail(request.getEmail());
-            user.setFirstName(request.getFirstName());
-            user.setLastName(request.getLastName());
-            String encodedPassword = passwordEncoder.encode(request.getPassword());
-            user.setPassword(encodedPassword);
-            User savedUser = userRepository.save(user);
-            System.out.println("[REGISTER] Пользователь сохранён: " + savedUser.getId());
-            String token = jwtUtil.generateToken(savedUser);
-            // --- Вызов core-api-service для генерации prekey bundle ---
-            String prekeyBundleUrl = coreApiUrl + "/api/users/" + savedUser.getId() + "/prekey-bundle";
-            System.out.println("[REGISTER] Вызов core-api-service: " + prekeyBundleUrl);
-            webClientBuilder.build()
-                .post()
-                .uri(prekeyBundleUrl)
-                .header("Authorization", "Bearer " + token)
-                .bodyValue(Map.of(
-                    "identityKey", "",
-                    "signedPreKey", "",
-                    "oneTimePreKeys", "",
-                    "signedPreKeySignature", ""
-                ))
-                .retrieve()
-                .bodyToMono(String.class)
-                .doOnError(e -> System.err.println("Ошибка генерации prekey bundle: " + e.getMessage()))
-                .doOnSuccess(resp -> System.out.println("[REGISTER] Ответ core-api-service: " + resp))
-                .subscribe();
-            // --- конец вызова ---
-            System.out.println("[REGISTER] Регистрация завершена успешно");
-            return ResponseEntity.ok(Map.of(
-                    "token", token,
-                    "userId", savedUser.getId(),
-                    "message", "Пользователь успешно зарегистрирован"
-            ));
-        } catch (Exception e) {
-            System.err.println("[REGISTER] Ошибка при регистрации: " + e.getMessage());
-            return ResponseEntity.status(500)
-                    .body(Map.of("error", "Ошибка при регистрации: " + e.getMessage()));
+        // 4. Генерация JWT
+        String token = jwtUtil.generateToken(savedUser);
+
+        // 5. Асинхронная инициализация E2EE prekey bundle в core-api-service
+        initPreKeyBundleAsync(savedUser.getId(), token);
+
+        return new RegisterResult(token, savedUser.getId());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Вход
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Аутентифицировать пользователя по логину и паролю.
+     *
+     * @param request данные для входа
+     * @return {@link LoginResult} с токеном и публичными данными пользователя
+     * @throws InvalidRequestException если username или password не переданы
+     * @throws BadCredentialsException если пользователь не найден или пароль неверен
+     */
+    @Transactional(readOnly = true)
+    public LoginResult login(LoginRequest request) {
+        // 1. Валидация входных данных — до обращения к БД
+        if (request.getUsername() == null || request.getUsername().isBlank()) {
+            throw new InvalidRequestException("Имя пользователя обязательно");
+        }
+        if (request.getPassword() == null || request.getPassword().isBlank()) {
+            throw new InvalidRequestException("Пароль обязателен");
+        }
+
+        // 2. Поиск пользователя (единое сообщение — не раскрываем существование аккаунта)
+        User user = userRepository.findByUsername(request.getUsername())
+                .orElseThrow(() -> new BadCredentialsException("Неверный логин или пароль"));
+
+        // 3. Проверка пароля
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            log.warn("[LOGIN] Неверный пароль для пользователя '{}'", request.getUsername());
+            throw new BadCredentialsException("Неверный логин или пароль");
+        }
+
+        log.info("[LOGIN] Пользователь '{}' успешно аутентифицирован", user.getUsername());
+
+        String token = jwtUtil.generateToken(user);
+
+        Map<String, Object> userInfo = Map.of(
+                "id",        user.getId(),
+                "username",  user.getUsername(),
+                "email",     user.getEmail()     != null ? user.getEmail()     : "",
+                "firstName", user.getFirstName() != null ? user.getFirstName() : "",
+                "lastName",  user.getLastName()  != null ? user.getLastName()  : ""
+        );
+
+        return new LoginResult(token, userInfo);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Вспомогательные методы
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Получить публичную информацию о пользователе по его имени.
+     *
+     * @param username имя пользователя из токена
+     * @return {@link Optional} с map полей {@code userId} и {@code username}
+     */
+    public Optional<Map<String, Object>> getUserInfo(String username) {
+        return userRepository.findByUsername(username)
+                .map(user -> Map.of(
+                        "userId",   (Object) user.getId(),
+                        "username", user.getUsername()
+                ));
+    }
+
+    /**
+     * Получить ID пользователя по имени.
+     *
+     * @param username имя пользователя из токена
+     * @return {@link Optional} с ID пользователя
+     */
+    public Optional<Long> getCurrentUserId(String username) {
+        return userRepository.findByUsername(username)
+                .map(User::getId);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Приватные методы
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Валидировать обязательные поля запроса регистрации.
+     * Вызывается до любых обращений к БД.
+     *
+     * @param request запрос регистрации
+     * @throws InvalidRequestException если хотя бы одно поле не заполнено
+     */
+    private void validateRegisterRequest(RegisterRequest request) {
+        if (request.getUsername() == null || request.getUsername().isBlank()) {
+            throw new InvalidRequestException("Имя пользователя обязательно");
+        }
+        if (request.getPassword() == null || request.getPassword().isBlank()) {
+            throw new InvalidRequestException("Пароль обязателен");
+        }
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new InvalidRequestException("Email обязателен");
         }
     }
 
-    public ResponseEntity<?> login(LoginRequest request) {
-        try {
+    /**
+     * Асинхронно инициализировать E2EE prekey bundle в core-api-service.
+     * <p>
+     * Ошибка при вызове не прерывает регистрацию, но фиксируется в логах
+     * с уровнем {@code ERROR} для последующей диагностики.
+     * Пустые ключи намеренно — core-api-service сгенерирует bundle самостоятельно.
+     *
+     * @param userId ID зарегистрированного пользователя
+     * @param token  JWT-токен для авторизации запроса
+     */
+    private void initPreKeyBundleAsync(Long userId, String token) {
+        String url = coreApiUrl + "/api/users/" + userId + "/prekey-bundle";
+        log.info("[REGISTER] Инициализация prekey bundle для userId={}", userId);
 
-            Optional<User> userOptional = userRepository.findByUsername(request.getUsername());
-
-            if (userOptional.isEmpty()) {
-                return ResponseEntity.status(401)
-                        .body(Map.of("error", "Неверный логин или пароль"));
-            }
-
-            User user = userOptional.get();
-
-
-            if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-                return ResponseEntity.status(401)
-                        .body(Map.of("error", "Неверный логин или пароль"));
-            }
-
-
-            String token = jwtUtil.generateToken(user);
-
-            // Создаем объект пользователя для фронтенда (без пароля)
-            Map<String, Object> userInfo = Map.of(
-                    "id", user.getId(),
-                    "username", user.getUsername(),
-                    "email", user.getEmail() != null ? user.getEmail() : "",
-                    "firstName", user.getFirstName() != null ? user.getFirstName() : "",
-                    "lastName", user.getLastName() != null ? user.getLastName() : ""
-            );
-
-            return ResponseEntity.ok(Map.of(
-                    "token", token,
-                    "user", userInfo,
-                    "message", "Успешная авторизация"
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.status(500)
-                    .body(Map.of("error", "Ошибка при авторизации: " + e.getMessage()));
-        }
+        webClientBuilder.build()
+                .post()
+                .uri(url)
+                .header("Authorization", "Bearer " + token)
+                .bodyValue(Map.of(
+                        "identityKey",          "",
+                        "signedPreKey",         "",
+                        "oneTimePreKeys",        "",
+                        "signedPreKeySignature", ""
+                ))
+                .retrieve()
+                .bodyToMono(String.class)
+                .doOnSuccess(resp ->
+                        log.info("[REGISTER] Prekey bundle инициализирован для userId={}", userId))
+                .doOnError(WebClientResponseException.class, ex ->
+                        log.error("[REGISTER] core-api-service вернул ошибку {} при инициализации prekey bundle для userId={}: {}",
+                                ex.getStatusCode(), userId, ex.getResponseBodyAsString()))
+                .doOnError(ex -> !(ex instanceof WebClientResponseException), ex ->
+                        log.error("[REGISTER] Не удалось подключиться к core-api-service для userId={}: {}",
+                                userId, ex.getMessage()))
+                .subscribe();
     }
 }

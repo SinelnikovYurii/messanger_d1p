@@ -1,13 +1,13 @@
 package part.example.authorization_service.DTO;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+/**
+ * Ответ после успешной регистрации пользователя.
+ */
+@Getter
+@AllArgsConstructor
 public class RegistrationResponse {
-    private String message;
-
-    public RegistrationResponse(String message) {
-        this.message = message;
-    }
-
-    public String getMessage() {
-        return message;
-    }
+    private final String message;
 }

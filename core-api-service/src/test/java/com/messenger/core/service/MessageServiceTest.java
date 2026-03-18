@@ -5,16 +5,17 @@ import com.messenger.core.model.Message;
 import com.messenger.core.model.Chat;
 import com.messenger.core.model.User;
 import com.messenger.core.model.MessageReadStatus;
-import com.messenger.core.dto.MessageReadStatusDto;
 import com.messenger.core.repository.MessageRepository;
 import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.UserRepository;
 import com.messenger.core.repository.MessageReadStatusRepository;
+import com.messenger.core.service.message.MessageService;
+import com.messenger.core.service.user.UserService;
 import org.springframework.kafka.core.KafkaTemplate;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Collections;
-import java.util.ArrayList;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.mockito.InjectMocks;
@@ -23,7 +24,6 @@ import org.mockito.MockitoAnnotations;
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
-import java.util.Set;
 import java.util.HashSet;
 
 class MessageServiceTest {

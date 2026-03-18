@@ -58,6 +58,12 @@ spring:
       properties:
         spring.json.trusted.packages: "*"
 
+# Конфигурация сообщений
+app:
+  messages:
+    default-page-size: 50
+    default-search-page-size: 20
+
 # Конфигурация хранения файлов
 file:
   upload-dir: ../uploads

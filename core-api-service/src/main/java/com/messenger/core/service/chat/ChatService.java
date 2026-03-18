@@ -1,7 +1,6 @@
-package com.messenger.core.service;
+package com.messenger.core.service.chat;
 
 import com.messenger.core.dto.ChatDto;
-import com.messenger.core.dto.MessageDto;
 import com.messenger.core.model.Chat;
 import com.messenger.core.model.Message;
 import com.messenger.core.model.User;
@@ -9,6 +8,8 @@ import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.MessageRepository;
 import com.messenger.core.repository.UserRepository;
 import com.messenger.core.repository.MessageReadStatusRepository;
+import com.messenger.core.service.message.MessageService;
+import com.messenger.core.service.user.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;

@@ -7,11 +7,10 @@ import com.messenger.core.model.User;
 import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.MessageRepository;
 import com.messenger.core.repository.UserRepository;
+import com.messenger.core.service.message.MessageKafkaListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 import org.springframework.kafka.core.KafkaTemplate;
 
 import java.time.LocalDateTime;
@@ -19,7 +18,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class MessageKafkaListenerTest {

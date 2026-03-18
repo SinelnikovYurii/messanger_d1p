@@ -1,4 +1,4 @@
-package com.messenger.core.service;
+package com.messenger.core.service.user;
 
 import com.messenger.core.dto.UserDto;
 import com.messenger.core.model.Friendship;

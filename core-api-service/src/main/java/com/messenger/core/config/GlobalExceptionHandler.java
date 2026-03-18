@@ -15,6 +15,7 @@ import java.util.Map;
 @Slf4j
 public class GlobalExceptionHandler {
 
+    /** 404 — сущность не найдена */
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Object> handleRuntimeException(
             RuntimeException ex, WebRequest request) {
@@ -26,14 +27,34 @@ public class GlobalExceptionHandler {
         log.error("Stack trace:", ex);
         log.error("=====================================");
 
+        if ("Chat not found".equals(ex.getMessage())) {
+            return buildResponse(HttpStatus.NOT_FOUND, "Not Found", ex.getMessage(), ex.getClass().getSimpleName());
+        }
+
+        if (ex instanceof IllegalArgumentException) {
+            String msg = ex.getMessage();
+            if (msg != null && (msg.contains("Ошибка авторизации")
+                    || msg.contains("Пользователь не аутентифицирован"))) {
+                return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", msg, ex.getClass().getSimpleName());
+            }
+            return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", msg, ex.getClass().getSimpleName());
+        }
+
+        if (ex instanceof IllegalStateException) {
+            return buildResponse(HttpStatus.CONFLICT, "Conflict", ex.getMessage(), ex.getClass().getSimpleName());
+        }
+
+        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", ex.getMessage(), ex.getClass().getSimpleName());
+    }
+
+    private ResponseEntity<Object> buildResponse(HttpStatus status, String error, String message, String exType) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", LocalDateTime.now().toString());
-        body.put("status", HttpStatus.BAD_REQUEST.value());
-        body.put("error", "Bad Request");
-        body.put("message", ex.getMessage());
-        body.put("exceptionType", ex.getClass().getSimpleName());
-
-        return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+        body.put("status", status.value());
+        body.put("error", error);
+        body.put("message", message);
+        body.put("exceptionType", exType);
+        return new ResponseEntity<>(body, status);
     }
 
     @ExceptionHandler(Exception.class)

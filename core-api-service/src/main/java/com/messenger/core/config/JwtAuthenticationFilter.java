@@ -1,6 +1,7 @@
 package com.messenger.core.config;
 
-import com.messenger.core.service.UserService;
+
+import com.messenger.core.service.user.UserService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -11,6 +12,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,9 +23,22 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * JWT-фильтр аутентификации для входящих HTTP-запросов.
+ * <p>
+ * Выполняется один раз на каждый запрос ({@link OncePerRequestFilter}).
+ * Логика обработки:
+ * <ol>
+ *   <li>Если присутствуют заголовки {@code X-Internal-Service} и {@code X-Service-Auth}
+ *       с корректными значениями — запрос помечается как внутренний сервисный
+ *       и получает роль {@code ROLE_INTERNAL_SERVICE} без проверки JWT.</li>
+ *   <li>В остальных случаях извлекается JWT из заголовка {@code Authorization},
+ *       валидируется подпись и срок действия, после чего пользователь получает
+ *       роль {@code ROLE_USER} и помещается в {@link SecurityContextHolder}.</li>
+ * </ol>
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -34,89 +49,91 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final UserService userService;
 
+    /**
+     * Основной метод фильтрации. Определяет тип запроса (внутренний сервис / внешний клиент)
+     * и устанавливает соответствующий контекст аутентификации Spring Security.
+     *
+     * @param request     входящий HTTP-запрос
+     * @param response    исходящий HTTP-ответ
+     * @param filterChain цепочка фильтров для передачи запроса дальше
+     * @throws ServletException при ошибке обработки сервлета
+     * @throws IOException      при ошибке ввода-вывода
+     */
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+                                    @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain filterChain)
             throws ServletException, IOException {
 
-        log.info("=== Core API JWT Filter Debug ===");
-        log.info("Processing request: {} {}", request.getMethod(), request.getRequestURI());
-        log.info("Authorization header: {}", request.getHeader("Authorization"));
-        log.info("X-Gateway-Request header: {}", request.getHeader("X-Gateway-Request"));
-
-        // Проверяем заголовки внутренних сервисов
         String internalService = request.getHeader("X-Internal-Service");
-        String serviceAuth = request.getHeader("X-Service-Auth");
+        String serviceAuth     = request.getHeader("X-Service-Auth");
 
-        log.info("X-Internal-Service header: {}", internalService);
-        log.info("X-Service-Auth header: {}", serviceAuth);
-
-        // Если это запрос от внутреннего сервиса - пропускаем JWT проверку
         if ("websocket-server".equals(internalService) && "internal-service-key".equals(serviceAuth)) {
-            log.info("Internal service request detected - bypassing JWT authentication");
+            log.debug("Внутренний сервисный запрос от '{}' — JWT-проверка пропущена", internalService);
 
-            // Создаем специальную аутентификацию для внутреннего сервиса
-            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-            authorities.add(new SimpleGrantedAuthority("ROLE_INTERNAL_SERVICE"));
+            List<SimpleGrantedAuthority> authorities = List.of(
+                    new SimpleGrantedAuthority("ROLE_INTERNAL_SERVICE"));
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken("internal-service", null, authorities);
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
             SecurityContextHolder.getContext().setAuthentication(authentication);
-            log.info("Set internal service authentication with role: ROLE_INTERNAL_SERVICE");
 
             filterChain.doFilter(request, response);
             return;
         }
 
-        log.info("All headers: ");
-        request.getHeaderNames().asIterator().forEachRemaining(headerName ->
-            log.info("  {}: {}", headerName, request.getHeader(headerName)));
-
         String token = getTokenFromRequest(request);
-        log.info("Extracted token: {}", token != null ? "***" + token.substring(Math.max(0, token.length() - 10)) : "null");
 
         if (token != null && validateToken(token)) {
             String username = getUsernameFromToken(token);
-            log.info("Extracted username from token: {}", username);
 
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                // Добавляем роль ROLE_USER
-                List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+                List<SimpleGrantedAuthority> authorities = List.of(
+                        new SimpleGrantedAuthority("ROLE_USER"));
 
-                // Создаем аутентификацию с ролями
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(username, null, authorities);
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-                log.info("Set authentication for user: {} with roles: {}", username, authorities);
+                log.debug("Аутентификация установлена для пользователя '{}'", username);
             }
         } else {
-            log.warn("No valid token found - request will be unauthorized");
+            log.warn("JWT-токен отсутствует или недействителен — запрос {} {} не аутентифицирован",
+                    request.getMethod(), request.getRequestURI());
         }
-        log.info("=================================");
 
         filterChain.doFilter(request, response);
     }
 
+    /**
+     * Извлечь JWT-токен из заголовка {@code Authorization}.
+     * Ожидается формат: {@code Bearer <token>}.
+     * Токен дополнительно проверяется на допустимые символы Base64URL.
+     *
+     * @param request входящий HTTP-запрос
+     * @return строка токена без префикса {@code Bearer }, или {@code null} если токен отсутствует
+     *         или содержит недопустимые символы
+     */
     private String getTokenFromRequest(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
-        log.debug("Authorization header: {}", bearerToken != null ? "Bearer ***" : "null");
 
         if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
             String token = bearerToken.substring(7);
-            // Проверяем, что токен соответствует формату JWT (Base64URL кодирование)
-            // JWT использует символы: A-Z, a-z, 0-9, +, /, =, -, _
             if (token.matches("[A-Za-z0-9+/=._-]+")) {
                 return token;
-            } else {
-                log.error("Token contains invalid characters: {}", token);
-                return null;
             }
+            log.warn("JWT-токен содержит недопустимые символы, запрос отклонён");
         }
         return null;
     }
 
+    /**
+     * Извлечь имя пользователя (subject) из JWT-токена.
+     *
+     * @param token строка JWT-токена
+     * @return имя пользователя, или {@code null} если токен невалиден
+     */
     public String getUsernameFromToken(String token) {
         try {
             SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
@@ -127,40 +144,72 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     .getBody();
             return claims.getSubject();
         } catch (Exception e) {
-            log.error("Error extracting username from token: {}", e.getMessage());
+            log.error("Ошибка извлечения имени пользователя из токена: {}", e.getMessage());
             return null;
         }
     }
 
+    /**
+     * Извлечь имя пользователя из JWT-токена, содержащегося в HTTP-запросе.
+     *
+     * @param request входящий HTTP-запрос
+     * @return имя пользователя, или {@code null} если токен отсутствует или невалиден
+     */
     public String getUsernameFromRequest(HttpServletRequest request) {
         String token = getTokenFromRequest(request);
-        if (token != null) {
-            return getUsernameFromToken(token);
-        }
-        return null;
+        return token != null ? getUsernameFromToken(token) : null;
     }
 
+    /**
+     * Получить ID пользователя из JWT-токена, содержащегося в HTTP-запросе.
+     * Выполняет поиск пользователя в БД по извлечённому имени.
+     *
+     * @param request входящий HTTP-запрос
+     * @return ID пользователя, или {@code null} если токен отсутствует или пользователь не найден
+     */
     public Long getUserIdFromRequest(HttpServletRequest request) {
         String username = getUsernameFromRequest(request);
         if (username != null) {
             return userService.findByUsername(username)
-                    .map(user -> user.getId())
+                    .map(com.messenger.core.model.User::getId)
                     .orElse(null);
         }
         return null;
     }
 
+    /**
+     * Получить ID пользователя непосредственно из строки JWT-токена.
+     * Выполняет поиск пользователя в БД по извлечённому имени.
+     *
+     * @param token строка JWT-токена
+     * @return ID пользователя, или {@code null} если токен невалиден или пользователь не найден
+     */
+    public Long getUserIdFromToken(String token) {
+        String username = getUsernameFromToken(token);
+        if (username != null) {
+            return userService.findByUsername(username)
+                    .map(com.messenger.core.model.User::getId)
+                    .orElse(null);
+        }
+        return null;
+    }
+
+    /**
+     * Проверить валидность JWT-токена: формат, подпись и срок действия.
+     *
+     * @param token строка JWT-токена
+     * @return {@code true} если токен валиден, {@code false} в противном случае
+     */
     public boolean validateToken(String token) {
         try {
             if (token == null || token.trim().isEmpty()) {
-                log.debug("Token is null or empty");
+                log.debug("Токен пустой или null");
                 return false;
             }
 
-            // Проверяем базовый формат JWT (3 части разделенные точками)
             String[] parts = token.split("\\.");
             if (parts.length != 3) {
-                log.error("Invalid JWT format - expected 3 parts, got {}", parts.length);
+                log.error("Неверный формат JWT: ожидается 3 части, получено {}", parts.length);
                 return false;
             }
 
@@ -169,13 +218,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     .setSigningKey(key)
                     .build()
                     .parseClaimsJws(token);
-            log.debug("Token validation successful");
             return true;
         } catch (io.jsonwebtoken.security.SignatureException e) {
-            log.error("Invalid JWT signature - token was likely created with different secret key: {}", e.getMessage());
+            log.error("Недействительная подпись JWT (возможно, другой секретный ключ): {}", e.getMessage());
             return false;
         } catch (Exception e) {
-            log.error("Invalid JWT token: {}", e.getMessage());
+            log.error("Ошибка валидации JWT-токена: {}", e.getMessage());
             return false;
         }
     }

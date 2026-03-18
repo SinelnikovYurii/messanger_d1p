@@ -8,10 +8,10 @@ import com.messenger.core.model.User;
 import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.MessageReadStatusRepository;
 import com.messenger.core.repository.MessageRepository;
+import com.messenger.core.service.message.MessageService;
+import com.messenger.core.service.user.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;

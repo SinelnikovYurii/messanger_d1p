@@ -1,7 +1,8 @@
 package com.messenger.core.controller;
 
 import com.messenger.core.dto.UserDto;
-import com.messenger.core.service.UserService;
+import com.messenger.core.service.encryption.EncryptionService;
+import com.messenger.core.service.user.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -14,7 +15,12 @@ import java.util.Map;
 
 /**
  * Контроллер для управления пользователями и их профилями.
- * Предоставляет эндпоинты для получения, поиска, обновления пользователей, работы с публичными ключами и prekey bundle.
+ * <p>
+ * Делегирует:
+ * <ul>
+ *   <li>Операции с профилями и друзьями — в {@link UserService}.</li>
+ *   <li>Криптографические операции (ключи, prekey bundle, backup) — в {@link EncryptionService}.</li>
+ * </ul>
  */
 @RestController
 @RequestMapping("/api/users")
@@ -22,30 +28,27 @@ import java.util.Map;
 @Slf4j
 public class UserController {
 
-    /**
-     * Сервис для работы с пользователями
-     */
+    /** Сервис управления пользователями (профили, друзья, статусы). */
     private final UserService userService;
 
+    /** Сервис управления E2EE-ключами пользователей. */
+    private final EncryptionService encryptionService;
+
+
     /**
-     * Получить всех пользователей (кроме текущего).
-     * @param request HTTP-запрос (используется для получения ID пользователя из заголовка)
-     * @return список пользователей
+     * Получить всех пользователей, кроме текущего.
+     *
+     * @param request HTTP-запрос для извлечения заголовка {@code x-user-id}
+     * @return список DTO пользователей
      */
     @GetMapping("/all")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<List<UserDto>> getAllUsers(HttpServletRequest request) {
-        log.info("Получен запрос на получение всех пользователей");
-
-        // Получаем ID пользователя из заголовка запроса
         String userIdHeader = request.getHeader("x-user-id");
-        log.info("ID пользователя из заголовка: {}", userIdHeader);
-
         if (userIdHeader == null) {
             log.error("Не указан ID пользователя в заголовке запроса");
             return ResponseEntity.badRequest().build();
         }
-
         try {
             Long currentUserId = Long.parseLong(userIdHeader);
             return ResponseEntity.ok(userService.getAllUsers(currentUserId));
@@ -56,24 +59,19 @@ public class UserController {
     }
 
     /**
-     * Получить список друзей пользователя.
-     * @param request HTTP-запрос (используется для получения ID пользователя из заголовка)
-     * @return список друзей
+     * Получить список друзей текущего пользователя.
+     *
+     * @param request HTTP-запрос для извлечения заголовка {@code x-user-id}
+     * @return список DTO друзей
      */
     @GetMapping("/friends")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<List<UserDto>> getFriends(HttpServletRequest request) {
-        log.info("Получен запрос на получение списка друзей");
-
-        // Получаем ID пользователя из заголовка запроса
         String userIdHeader = request.getHeader("x-user-id");
-        log.info("ID пользователя из заголовка: {}", userIdHeader);
-
         if (userIdHeader == null) {
             log.error("Не указан ID пользователя в заголовке запроса");
             return ResponseEntity.badRequest().build();
         }
-
         try {
             Long currentUserId = Long.parseLong(userIdHeader);
             return ResponseEntity.ok(userService.getFriends(currentUserId));
@@ -85,8 +83,10 @@ public class UserController {
 
     /**
      * Поиск пользователей по строке запроса.
-     * @param query поисковый запрос
-     * @param request HTTP-запрос (используется для получения ID пользователя из заголовка)
+     * Текущий пользователь исключается из результатов.
+     *
+     * @param query   поисковая строка
+     * @param request HTTP-запрос для извлечения заголовка {@code x-user-id}
      * @return список результатов поиска
      */
     @GetMapping("/search")
@@ -94,27 +94,15 @@ public class UserController {
     public ResponseEntity<List<UserDto.UserSearchResult>> searchUsers(
             @RequestParam String query,
             HttpServletRequest request) {
-        log.info("Получен запрос на поиск пользователей с запросом: {}", query);
-
-        // Получаем ID пользователя из заголовка запроса
         String userIdHeader = request.getHeader("x-user-id");
-        log.info("ID пользователя из заголовка: {}", userIdHeader);
-
         if (userIdHeader == null) {
             log.error("Не указан ID пользователя в заголовке запроса");
             return ResponseEntity.badRequest().build();
         }
-
         try {
             Long currentUserId = Long.parseLong(userIdHeader);
             List<UserDto.UserSearchResult> results = userService.searchUsers(query, currentUserId);
-
-            log.info("Найдено пользователей: {}", results.size());
-            results.forEach(user ->
-                log.info("User search result: id={}, username={}, profilePictureUrl={}",
-                    user.getId(), user.getUsername(), user.getProfilePictureUrl())
-            );
-
+            log.info("Поиск '{}': найдено {} пользователей", query, results.size());
             return ResponseEntity.ok(results);
         } catch (NumberFormatException e) {
             log.error("Некорректный формат ID пользователя: {}", userIdHeader);
@@ -123,200 +111,179 @@ public class UserController {
     }
 
     /**
-     * Обновить профиль пользователя.
-     * @param request объект с данными для обновления профиля
-     * @param httpRequest HTTP-запрос (используется для получения ID пользователя из заголовка)
-     * @return обновлённый профиль пользователя или сообщение об ошибке
+     * Обновить данные профиля текущего пользователя.
+     *
+     * @param request     объект с новыми данными профиля
+     * @param httpRequest HTTP-запрос для извлечения заголовка {@code x-user-id}
+     * @return обновлённый DTO пользователя или описание ошибки
      */
     @PutMapping("/profile")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> updateProfile(
             @RequestBody UserDto.UpdateProfileRequest request,
             HttpServletRequest httpRequest) {
-        log.info("Получен запрос на обновление профиля: {}", request);
-
         String userIdHeader = httpRequest.getHeader("x-user-id");
         if (userIdHeader == null) {
-            log.error("Не указан ID пользователя в заголовке запроса");
             return ResponseEntity.badRequest().body(Map.of("error", "Не указан ID пользователя"));
         }
-
         try {
             Long currentUserId = Long.parseLong(userIdHeader);
-            log.info("Обновление профиля для пользователя с ID: {}", currentUserId);
-
-            UserDto updatedUser = userService.updateProfile(currentUserId, request);
-            return ResponseEntity.ok(updatedUser);
+            log.info("Обновление профиля пользователя {}", currentUserId);
+            return ResponseEntity.ok(userService.updateProfile(currentUserId, request));
         } catch (NumberFormatException e) {
-            log.error("Некорректный формат ID пользователя: {}", userIdHeader);
             return ResponseEntity.badRequest().body(Map.of("error", "Некорректный формат ID"));
         } catch (RuntimeException e) {
-            log.error("Ошибка при обновлении профиля: {}", e.getMessage());
+            log.error("Ошибка обновления профиля: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
     /**
      * Получить информацию о текущем пользователе.
-     * @param httpRequest HTTP-запрос (используется для получения ID пользователя из заголовка)
-     * @return информация о пользователе или сообщение об ошибке
+     *
+     * @param httpRequest HTTP-запрос для извлечения заголовка {@code x-user-id}
+     * @return DTO текущего пользователя или описание ошибки
      */
     @GetMapping("/profile")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> getCurrentUserProfile(HttpServletRequest httpRequest) {
-        log.info("Получен запрос на получение информации о текущем пользователе");
-
         String userIdHeader = httpRequest.getHeader("x-user-id");
         if (userIdHeader == null) {
-            log.error("Не указан ID пользователя в заголовке запроса");
             return ResponseEntity.badRequest().body(Map.of("error", "Не указан ID пользователя"));
         }
-
         try {
             Long currentUserId = Long.parseLong(userIdHeader);
-            UserDto userInfo = userService.getUserInfo(currentUserId, currentUserId);
-            return ResponseEntity.ok(userInfo);
+            return ResponseEntity.ok(userService.getUserInfo(currentUserId, currentUserId));
         } catch (NumberFormatException e) {
-            log.error("Некорректный формат ID пользователя: {}", userIdHeader);
             return ResponseEntity.badRequest().body(Map.of("error", "Некорректный формат ID"));
         } catch (RuntimeException e) {
-            log.error("Ошибка при получении информации о пользователе: {}", e.getMessage());
+            log.error("Ошибка получения профиля: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
     /**
-     * Загрузить аватар профиля пользователя.
-     * @param file файл-аватар
-     * @param httpRequest HTTP-запрос (используется для получения ID пользователя из заголовка)
-     * @return URL аватара или сообщение об ошибке
+     * Загрузить аватар текущего пользователя.
+     * Принимает файл изображения размером до 10 МБ.
+     *
+     * @param file        загружаемый файл изображения
+     * @param httpRequest HTTP-запрос для извлечения заголовка {@code x-user-id}
+     * @return URL сохранённого аватара или описание ошибки
      */
     @PostMapping("/profile/avatar")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> uploadAvatar(
             @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
             HttpServletRequest httpRequest) {
-        log.info("Получен запрос на загрузку аватара профиля");
-
         String userIdHeader = httpRequest.getHeader("x-user-id");
         if (userIdHeader == null) {
-            log.error("Не указан ID пользователя в заголовке запроса");
             return ResponseEntity.badRequest().body(Map.of("error", "Не указан ID пользователя"));
         }
-
         try {
             Long currentUserId = Long.parseLong(userIdHeader);
-
-            // Проверяем, что это изображение
             String contentType = file.getContentType();
             if (contentType == null || !contentType.startsWith("image/")) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Файл должен быть изображением"));
             }
-
-            // УВЕЛИЧЕНО: Проверяем размер файла (максимум 10 МБ)
             if (file.getSize() > 10 * 1024 * 1024) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Размер файла не должен превышать 10 МБ"));
             }
-
-            log.info("Загрузка аватара для пользователя с ID: {}, размер: {} байт", currentUserId, file.getSize());
-
+            log.info("Загрузка аватара: userId={}, size={} байт", currentUserId, file.getSize());
             String avatarUrl = userService.uploadAvatar(currentUserId, file);
             return ResponseEntity.ok(Map.of("avatarUrl", avatarUrl));
         } catch (NumberFormatException e) {
-            log.error("Некорректный формат ID пользователя: {}", userIdHeader);
             return ResponseEntity.badRequest().body(Map.of("error", "Некорректный формат ID"));
         } catch (Exception e) {
-            log.error("Ошибка при загрузке аватара: {}", e.getMessage());
+            log.error("Ошибка загрузки аватара: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
     /**
-     * Обновить онлайн-статус пользователя (вызывается WebSocket сервером).
-     * @param userId ID пользователя
-     * @param isOnline онлайн-статус
-     * @param httpRequest HTTP-запрос (используется для проверки внутреннего сервиса)
-     * @return результат обновления статуса
+     * Обновить онлайн-статус пользователя.
+     * Вызывается только WebSocket-сервером (проверяется заголовок {@code X-Internal-Service}).
+     *
+     * @param userId      ID пользователя
+     * @param isOnline    новый статус присутствия
+     * @param httpRequest HTTP-запрос для проверки заголовка внутреннего сервиса
+     * @return результат обновления или 403
      */
     @PostMapping("/{userId}/status/online")
     public ResponseEntity<?> updateOnlineStatus(
             @PathVariable Long userId,
             @RequestParam boolean isOnline,
             HttpServletRequest httpRequest) {
-
-        // Проверяем, что запрос от внутреннего сервиса
-        String internalServiceHeader = httpRequest.getHeader("X-Internal-Service");
-        if (!"websocket-server".equals(internalServiceHeader)) {
-            log.warn("Попытка обновления онлайн-статуса не от WebSocket сервера");
+        if (!"websocket-server".equals(httpRequest.getHeader("X-Internal-Service"))) {
+            log.warn("Запрос на изменение статуса не от WebSocket-сервера");
             return ResponseEntity.status(403).body(Map.of("error", "Forbidden"));
         }
-
-        log.info("Обновление онлайн-статуса для пользователя {}: {}", userId, isOnline);
-
         try {
             userService.updateOnlineStatus(userId, isOnline);
             return ResponseEntity.ok(Map.of("success", true));
         } catch (Exception e) {
-            log.error("Ошибка при обновлении онлайн-статуса: {}", e.getMessage());
+            log.error("Ошибка обновления онлайн-статуса: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
     /**
-     * Получить данные пользователя по ID (для внутренних сервисов).
-     * @param userId ID пользователя
-     * @param httpRequest HTTP-запрос (используется для проверки внутреннего сервиса)
-     * @return данные пользователя или сообщение об ошибке
+     * Получить данные пользователя по ID для внутренних сервисов.
+     * Проверяется заголовок {@code X-Internal-Service}.
+     *
+     * @param userId      ID пользователя
+     * @param httpRequest HTTP-запрос для проверки заголовка внутреннего сервиса
+     * @return DTO пользователя или 403
      */
     @GetMapping("/{userId}/internal")
     public ResponseEntity<?> getUserDataInternal(
             @PathVariable Long userId,
             HttpServletRequest httpRequest) {
-
-        // Проверяем, что запрос от внутреннего сервиса
-        String internalServiceHeader = httpRequest.getHeader("X-Internal-Service");
-        if (!"websocket-server".equals(internalServiceHeader)) {
-            log.warn("Попытка получения данных пользователя не от внутреннего сервиса");
+        if (!"websocket-server".equals(httpRequest.getHeader("X-Internal-Service"))) {
+            log.warn("Запрос данных пользователя не от внутреннего сервиса");
             return ResponseEntity.status(403).body(Map.of("error", "Forbidden"));
         }
-
-        log.info("Получение данных пользователя {} для внутреннего сервиса", userId);
-
         try {
-            UserDto user = userService.getUserInfo(userId, userId); // Используем userId для обоих параметров
-            return ResponseEntity.ok(user);
+            return ResponseEntity.ok(userService.getUserInfo(userId, userId));
         } catch (Exception e) {
-            log.error("Ошибка при получении данных пользователя: {}", e.getMessage());
+            log.error("Ошибка получения данных пользователя {}: {}", userId, e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Криптографические операции (делегируются в EncryptionService)
+    // ─────────────────────────────────────────────────────────────────────────
+
     /**
      * Сохранить публичный ключ пользователя.
+     *
      * @param userId ID пользователя
-     * @param body тело запроса с публичным ключом
+     * @param body   тело запроса: {@code { "publicKey": "..." }}
      * @return статус сохранения
      */
     @PostMapping("/{userId}/public-key")
     @PreAuthorize("hasRole('ROLE_USER')")
-    public ResponseEntity<?> savePublicKey(@PathVariable Long userId, @RequestBody Map<String, String> body) {
+    public ResponseEntity<?> savePublicKey(
+            @PathVariable Long userId,
+            @RequestBody Map<String, String> body) {
         String publicKey = body.get("publicKey");
         if (publicKey == null || publicKey.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "publicKey is required"));
+            return ResponseEntity.badRequest().body(Map.of("error", "publicKey обязателен"));
         }
-        userService.savePublicKey(userId, publicKey);
+        encryptionService.savePublicKey(userId, publicKey);
         return ResponseEntity.ok(Map.of("status", "ok"));
     }
 
     /**
      * Получить публичный ключ пользователя.
+     *
      * @param userId ID пользователя
-     * @return публичный ключ или 404
+     * @return {@code { "publicKey": "..." }} или 404, если ключ не найден
      */
     @GetMapping("/{userId}/public-key")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> getPublicKey(@PathVariable Long userId) {
-        String publicKey = userService.getPublicKey(userId);
+        String publicKey = encryptionService.getPublicKey(userId);
         if (publicKey == null || publicKey.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
@@ -325,82 +292,84 @@ public class UserController {
 
     /**
      * Сохранить X3DH prekey bundle пользователя.
+     * Если обязательные ключи отсутствуют — автоматически генерирует новый bundle.
+     *
      * @param userId ID пользователя
-     * @param body тело запроса с ключами
-     * @return статус сохранения или сгенерированный bundle
+     * @param body   тело запроса с полями identityKey, signedPreKey, oneTimePreKeys, signedPreKeySignature
+     * @return статус {@code ok} или {@code generated} с новым bundle
      */
     @PostMapping("/{userId}/prekey-bundle")
     @PreAuthorize("hasRole('ROLE_USER')")
-    public ResponseEntity<?> savePreKeyBundle(@PathVariable Long userId, @RequestBody Map<String, String> body) {
-        String identityKey = body.get("identityKey");
-        String signedPreKey = body.get("signedPreKey");
-        String oneTimePreKeys = body.get("oneTimePreKeys");
+    public ResponseEntity<?> savePreKeyBundle(
+            @PathVariable Long userId,
+            @RequestBody Map<String, String> body) {
+        String identityKey          = body.get("identityKey");
+        String signedPreKey         = body.get("signedPreKey");
+        String oneTimePreKeys       = body.get("oneTimePreKeys");
         String signedPreKeySignature = body.get("signedPreKeySignature");
 
-        System.out.println("[PREKEY-SAVE] Received keys for user " + userId);
-        System.out.println("[PREKEY-SAVE] identityKey=" + (identityKey != null ? identityKey.substring(0, Math.min(30, identityKey.length())) : "null"));
-        System.out.println("[PREKEY-SAVE] signedPreKey=" + (signedPreKey != null ? signedPreKey.substring(0, Math.min(30, signedPreKey.length())) : "null"));
-
-        // Проверяем только обязательные ключи (signedPreKeySignature опциональна)
-        boolean needGen = identityKey == null || identityKey.isEmpty() ||
-                         signedPreKey == null || signedPreKey.isEmpty() ||
-                         oneTimePreKeys == null || oneTimePreKeys.isEmpty();
+        boolean needGen = identityKey == null || identityKey.isEmpty()
+                || signedPreKey == null || signedPreKey.isEmpty()
+                || oneTimePreKeys == null || oneTimePreKeys.isEmpty();
 
         if (needGen) {
-            System.out.println("[PREKEY-SAVE] Missing required keys, auto-generating...");
-            Map<String, String> generated = userService.generateAndSavePreKeyBundle(userId);
+            log.info("Ключи не переданы для пользователя {}, выполняется автогенерация", userId);
+            Map<String, String> generated = encryptionService.generateAndSavePreKeyBundle(userId);
             return ResponseEntity.ok(Map.of("status", "generated", "bundle", generated));
         }
 
-        System.out.println("[PREKEY-SAVE] Saving client-provided keys...");
-        userService.savePreKeyBundle(userId, identityKey, signedPreKey, oneTimePreKeys, signedPreKeySignature);
-        System.out.println("[PREKEY-SAVE] ✓ Keys saved successfully");
-
+        encryptionService.savePreKeyBundle(userId, identityKey, signedPreKey, oneTimePreKeys, signedPreKeySignature);
+        log.info("Prekey bundle сохранён для пользователя {}", userId);
         return ResponseEntity.ok(Map.of("status", "ok"));
     }
 
     /**
      * Получить X3DH prekey bundle пользователя.
+     * Если ключи отсутствуют — возвращается автоматически сгенерированный bundle.
+     *
      * @param userId ID пользователя
-     * @return prekey bundle или 404
+     * @return prekey bundle или 404, если данные неполные
      */
     @GetMapping("/{userId}/prekey-bundle")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> getPreKeyBundle(@PathVariable Long userId) {
-        // Получаем prekey bundle из сервиса (должен быть объект с ключами)
-        Map<String, String> bundle = userService.getPreKeyBundle(userId);
-        if (bundle == null || bundle.isEmpty() ||
-            bundle.get("identityKey") == null || bundle.get("identityKey").isEmpty() ||
-            bundle.get("signedPreKey") == null || bundle.get("signedPreKey").isEmpty() ||
-            bundle.get("oneTimePreKeys") == null || bundle.get("oneTimePreKeys").isEmpty()) {
+        Map<String, String> bundle = encryptionService.getPreKeyBundle(userId);
+        if (bundle == null || bundle.isEmpty()
+                || bundle.get("identityKey") == null || bundle.get("identityKey").isEmpty()
+                || bundle.get("signedPreKey") == null || bundle.get("signedPreKey").isEmpty()
+                || bundle.get("oneTimePreKeys") == null || bundle.get("oneTimePreKeys").isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(bundle);
     }
 
     /**
-     * Получить PreKeyBundleProtocol для Double Ratchet.
+     * Получить PreKeyBundleProtocol для протокола Double Ratchet.
+     *
      * @param userId ID пользователя
-     * @return prekey bundle protocol или 404
+     * @return расширенный bundle с разобранным списком oneTimePreKeys или 404
      */
     @GetMapping("/{userId}/prekey-bundle-protocol")
     @PreAuthorize("hasRole('ROLE_USER')")
     public ResponseEntity<?> getPreKeyBundleProtocol(@PathVariable Long userId) {
-        Map<String, Object> bundle = userService.getPreKeyBundleProtocol(userId);
+        Map<String, Object> bundle = encryptionService.getPreKeyBundleProtocol(userId);
         Object oneTimePreKeysObj = bundle.get("oneTimePreKeys");
-        if (bundle == null || bundle.isEmpty() ||
-            bundle.get("identityKey") == null || ((String)bundle.get("identityKey")).isEmpty() ||
-            bundle.get("signedPreKey") == null || ((String)bundle.get("signedPreKey")).isEmpty() ||
-            oneTimePreKeysObj == null || !(oneTimePreKeysObj instanceof List) || ((List<?>)oneTimePreKeysObj).isEmpty()) {
+        if (bundle.isEmpty()
+                || bundle.get("identityKey") == null || ((String) bundle.get("identityKey")).isEmpty()
+                || bundle.get("signedPreKey") == null || ((String) bundle.get("signedPreKey")).isEmpty()
+                || !(oneTimePreKeysObj instanceof List) || ((List<?>) oneTimePreKeysObj).isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(bundle);
     }
 
     /**
-     * Сохранить зашифрованный бекап E2EE ключей пользователя.
-     * Тело запроса: { "encryptedPayload": "..." } — JSON-blob зашифрованных ключей.
-     * Сервер не знает пароль шифрования и не может расшифровать данные.
+     * Сохранить зашифрованный бекап E2EE-ключей текущего пользователя.
+     * Сервер хранит только зашифрованный blob — пароль шифрования серверу неизвестен.
+     *
+     * @param body        тело запроса: {@code { "encryptedPayload": "..." }}
+     * @param httpRequest HTTP-запрос для извлечения заголовка {@code x-user-id}
+     * @return статус сохранения
      */
     @PostMapping("/me/key-backup")
     @PreAuthorize("hasRole('ROLE_USER')")
@@ -416,20 +385,21 @@ public class UserController {
             return ResponseEntity.badRequest().body(Map.of("error", "encryptedPayload обязателен"));
         }
         try {
-            Long userId = Long.parseLong(userIdHeader);
-            userService.saveEncryptedKeyBackup(userId, encryptedPayload);
+            encryptionService.saveEncryptedKeyBackup(Long.parseLong(userIdHeader), encryptedPayload);
             return ResponseEntity.ok(Map.of("status", "ok"));
         } catch (NumberFormatException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Некорректный формат ID"));
         } catch (Exception e) {
-            log.error("Ошибка при сохранении бекапа ключей: {}", e.getMessage());
+            log.error("Ошибка сохранения бекапа ключей: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
     /**
-     * Получить зашифрованный бекап E2EE ключей текущего пользователя.
-     * Возвращает { "encryptedPayload": "..." } или 404 если бекап не найден.
+     * Получить зашифрованный бекап E2EE-ключей текущего пользователя.
+     *
+     * @param httpRequest HTTP-запрос для извлечения заголовка {@code x-user-id}
+     * @return {@code { "encryptedPayload": "..." }} или 404, если бекап не найден
      */
     @GetMapping("/me/key-backup")
     @PreAuthorize("hasRole('ROLE_USER')")
@@ -439,8 +409,7 @@ public class UserController {
             return ResponseEntity.badRequest().body(Map.of("error", "Не указан ID пользователя"));
         }
         try {
-            Long userId = Long.parseLong(userIdHeader);
-            String encryptedPayload = userService.getEncryptedKeyBackup(userId);
+            String encryptedPayload = encryptionService.getEncryptedKeyBackup(Long.parseLong(userIdHeader));
             if (encryptedPayload == null || encryptedPayload.isEmpty()) {
                 return ResponseEntity.notFound().build();
             }
@@ -448,7 +417,7 @@ public class UserController {
         } catch (NumberFormatException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Некорректный формат ID"));
         } catch (Exception e) {
-            log.error("Ошибка при получении бекапа ключей: {}", e.getMessage());
+            log.error("Ошибка получения бекапа ключей: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }

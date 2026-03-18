@@ -59,16 +59,6 @@ public class JwtService {
         return extractClaim(token, Claims::getExpiration);
     }
 
-    public String generateToken(String username, Long userId) {
-        return Jwts.builder()
-                .setSubject(username)
-                .claim("id", userId)
-                .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
-                .signWith(getSigningKey())
-                .compact();
-    }
-
     public Long extractUserId(String token) {
         return extractClaim(token, claims -> claims.get("id", Long.class));
     }

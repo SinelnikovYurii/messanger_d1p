@@ -1,6 +1,8 @@
 package com.messenger.core.service;
 
 import lombok.extern.slf4j.Slf4j;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -136,6 +138,41 @@ public class FileStorageService {
     }
 
     /**
+     * Загрузить аватарку по имени файла.
+     * Возвращает Resource, готовый для отправки клиенту.
+     *
+     * @param filename имя файла аватарки
+     * @return загруженный ресурс
+     * @throws IOException если файл не найден или недоступен
+     */
+    public org.springframework.core.io.Resource loadAvatar(String filename) throws IOException {
+        Path filePath = Paths.get(uploadDir, "avatars", filename).normalize();
+        org.springframework.core.io.Resource resource =
+                new org.springframework.core.io.UrlResource(filePath.toUri());
+
+        if (!resource.exists() || !resource.isReadable()) {
+            throw new java.nio.file.NoSuchFileException(filename);
+        }
+
+        return resource;
+    }
+
+    /**
+     * Определить MIME-тип по имени файла.
+     * Централизованная логика — соответствует OCP: добавление нового типа не меняет контроллер.
+     *
+     * @param filename имя файла
+     * @return строка MIME-типа
+     */
+    public String detectMimeType(String filename) {
+        String lower = filename.toLowerCase();
+        if (lower.endsWith(".png"))  return "image/png";
+        if (lower.endsWith(".gif"))  return "image/gif";
+        if (lower.endsWith(".webp")) return "image/webp";
+        return "image/jpeg"; // по умолчанию
+    }
+
+    /**
      * Удалить файл
      */
     public void deleteFile(String fileUrl) {
@@ -209,6 +246,8 @@ public class FileStorageService {
     /**
      * DTO с информацией о файле
      */
+    @Getter
+    @Setter
     public static class FileInfo {
         private String fileName;
         private String storedFileName;
@@ -216,23 +255,5 @@ public class FileStorageService {
         private Long fileSize;
         private String mimeType;
         private String thumbnailUrl;
-
-        public String getFileName() { return fileName; }
-        public void setFileName(String fileName) { this.fileName = fileName; }
-
-        public String getStoredFileName() { return storedFileName; }
-        public void setStoredFileName(String storedFileName) { this.storedFileName = storedFileName; }
-
-        public String getFileUrl() { return fileUrl; }
-        public void setFileUrl(String fileUrl) { this.fileUrl = fileUrl; }
-
-        public Long getFileSize() { return fileSize; }
-        public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
-
-        public String getMimeType() { return mimeType; }
-        public void setMimeType(String mimeType) { this.mimeType = mimeType; }
-
-        public String getThumbnailUrl() { return thumbnailUrl; }
-        public void setThumbnailUrl(String thumbnailUrl) { this.thumbnailUrl = thumbnailUrl; }
     }
 }

@@ -1,76 +1,53 @@
 package com.messenger.core.controller;
 
+import com.messenger.core.service.FileStorageService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.NoSuchFileException;
 
 /**
- * Контроллер для публичного доступа к статическим файлам (аватарки)
- * Не требует JWT авторизации
+ * Контроллер для публичного доступа к статическим файлам (аватарки).
+ * Не требует JWT авторизации.
+ * Ответственность: маршрутизация HTTP-запросов и формирование ответа (SRP).
+ * Вся файловая логика делегирована в {@link FileStorageService} (DIP).
  */
 @RestController
 @RequestMapping
 @Slf4j
+@RequiredArgsConstructor
 public class PublicFileController {
 
-    @Value("${file.upload-dir:uploads}")
-    private String uploadDir;
+    private final FileStorageService fileStorageService;
 
     /**
-     * Публичный endpoint для получения аватарок
-     * Доступен без JWT токена
+     * Публичный endpoint для получения аватарок.
+     * Доступен без JWT токена.
+     * Поддерживает два пути для совместимости: /avatars/... и /uploads/avatars/...
      */
-    @GetMapping("/avatars/{filename:.+}")
+    @GetMapping({"/avatars/{filename:.+}", "/uploads/avatars/{filename:.+}"})
     public ResponseEntity<Resource> getAvatar(@PathVariable String filename) {
+        log.info("Запрос аватарки: {}", filename);
         try {
-            log.info("Запрос аватарки: {}", filename);
-
-            Path filePath = Paths.get(uploadDir, "avatars", filename);
-            Resource resource = new UrlResource(filePath.toUri());
-
-            if (!resource.exists() || !resource.isReadable()) {
-                log.warn("Аватарка не найдена или недоступна: {}", filename);
-                return ResponseEntity.notFound().build();
-            }
-
-            // Определяем MIME тип
-            String contentType = "image/jpeg"; // По умолчанию
-            if (filename.toLowerCase().endsWith(".png")) {
-                contentType = "image/png";
-            } else if (filename.toLowerCase().endsWith(".gif")) {
-                contentType = "image/gif";
-            } else if (filename.toLowerCase().endsWith(".webp")) {
-                contentType = "image/webp";
-            }
-
+            Resource resource = fileStorageService.loadAvatar(filename);
+            String contentType = fileStorageService.detectMimeType(filename);
             log.info("Аватарка успешно найдена: {}, тип: {}", filename, contentType);
-
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(contentType))
-                    .header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000") // Кеширование на 1 год
+                    .header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000")
                     .body(resource);
-
+        } catch (NoSuchFileException e) {
+            log.warn("Аватарка не найдена: {}", filename);
+            return ResponseEntity.notFound().build();
         } catch (IOException e) {
             log.error("Ошибка при чтении аватарки {}: {}", filename, e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
-
-    /**
-     * Альтернативный путь для совместимости
-     */
-    @GetMapping("/uploads/avatars/{filename:.+}")
-    public ResponseEntity<Resource> getAvatarAlternative(@PathVariable String filename) {
-        return getAvatar(filename);
-    }
 }
-

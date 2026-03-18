@@ -8,6 +8,8 @@ import com.messenger.core.model.User;
 import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.MessageRepository;
 import com.messenger.core.repository.MessageReadStatusRepository;
+import com.messenger.core.service.message.MessageService;
+import com.messenger.core.service.user.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;

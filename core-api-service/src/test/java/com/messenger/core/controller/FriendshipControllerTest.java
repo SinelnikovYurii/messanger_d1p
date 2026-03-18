@@ -1,8 +1,7 @@
 package com.messenger.core.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.messenger.core.model.Friendship;
-import com.messenger.core.service.FriendshipService;
+import com.messenger.core.service.user.FriendshipService;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;

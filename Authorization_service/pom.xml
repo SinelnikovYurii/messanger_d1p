@@ -69,6 +69,13 @@
             <artifactId>spring-security-crypto</artifactId>
         </dependency>
 
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- JWT support -->
 
         <dependency>

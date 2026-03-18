@@ -1,4 +1,4 @@
-package com.messenger.core.service;
+package com.messenger.core.service.message;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.messenger.core.model.Message;

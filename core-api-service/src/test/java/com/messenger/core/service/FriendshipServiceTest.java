@@ -4,6 +4,8 @@ import com.messenger.core.model.User;
 import com.messenger.core.model.Friendship;
 import com.messenger.core.repository.FriendshipRepository;
 import com.messenger.core.repository.UserRepository;
+import com.messenger.core.service.user.FriendshipService;
+import com.messenger.core.service.user.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;

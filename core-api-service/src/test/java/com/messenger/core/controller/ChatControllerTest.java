@@ -2,7 +2,7 @@ package com.messenger.core.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.messenger.core.dto.ChatDto;
-import com.messenger.core.service.ChatService;
+import com.messenger.core.service.chat.ChatService;
 import com.messenger.core.service.OptimizedDataService;
 import com.messenger.core.config.JwtAuthenticationFilter;
 import org.junit.jupiter.api.Test;

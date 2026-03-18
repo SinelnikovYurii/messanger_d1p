@@ -1,4 +1,4 @@
-package com.messenger.core.service;
+package com.messenger.core.service.message;
 
 import com.messenger.core.dto.MessageDto;
 import com.messenger.core.dto.MessageReadStatusDto;
@@ -10,7 +10,10 @@ import com.messenger.core.repository.ChatRepository;
 import com.messenger.core.repository.MessageRepository;
 import com.messenger.core.repository.MessageReadStatusRepository;
 import com.messenger.core.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
+import com.messenger.core.service.FileStorageService;
+import com.messenger.core.service.OptimizedDataService;
+import com.messenger.core.service.user.UserService;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -27,7 +30,6 @@ import java.util.stream.Collectors;
  * Сервис для работы с сообщениями в чатах.
  */
 @Service
-@RequiredArgsConstructor
 @Transactional
 public class MessageService {
 
@@ -37,6 +39,64 @@ public class MessageService {
     private final UserService userService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final MessageReadStatusRepository messageReadStatusRepository;
+    private final OptimizedDataService optimizedDataService;
+
+    public MessageService(MessageRepository messageRepository,
+                          ChatRepository chatRepository,
+                          UserRepository userRepository,
+                          UserService userService,
+                          KafkaTemplate<String, Object> kafkaTemplate,
+                          MessageReadStatusRepository messageReadStatusRepository,
+                          @Lazy OptimizedDataService optimizedDataService) {
+        this.messageRepository = messageRepository;
+        this.chatRepository = chatRepository;
+        this.userRepository = userRepository;
+        this.userService = userService;
+        this.kafkaTemplate = kafkaTemplate;
+        this.messageReadStatusRepository = messageReadStatusRepository;
+        this.optimizedDataService = optimizedDataService;
+    }
+
+    /**
+     * Получить сообщения чата — делегирует оптимизированному сервису
+     *
+     * @param chatId ID чата
+     * @param userId ID запрашивающего пользователя
+     * @param page   номер страницы
+     * @param size   размер страницы
+     * @return список DTO сообщений
+     */
+    public List<MessageDto> getChatMessages(Long chatId, Long userId, int page, int size) {
+        return optimizedDataService.getOptimizedChatMessages(chatId, userId, page, size);
+    }
+
+    /**
+     * Отправить файловое сообщение в чат.
+     * Определяет тип сообщения (IMAGE/FILE) по mimeType и собирает SendMessageRequest.
+     *
+     * @param userId   ID отправителя
+     * @param chatId   ID чата
+     * @param caption  подпись к файлу (может быть null)
+     * @param fileInfo информация о сохранённом файле
+     * @return DTO отправленного сообщения
+     */
+    public MessageDto sendFileMessage(Long userId, Long chatId, String caption,
+                                      FileStorageService.FileInfo fileInfo) {
+        MessageDto.SendMessageRequest request = new MessageDto.SendMessageRequest();
+        request.setChatId(chatId);
+        request.setContent(caption != null ? caption : fileInfo.getFileName());
+        request.setFileUrl(fileInfo.getFileUrl());
+        request.setFileName(fileInfo.getFileName());
+        request.setFileSize(fileInfo.getFileSize());
+        request.setMimeType(fileInfo.getMimeType());
+        request.setThumbnailUrl(fileInfo.getThumbnailUrl());
+        request.setMessageType(
+                fileInfo.getMimeType() != null && fileInfo.getMimeType().startsWith("image/")
+                        ? Message.MessageType.IMAGE
+                        : Message.MessageType.FILE
+        );
+        return sendMessage(userId, request);
+    }
 
     /**
      * Отправить сообщение в чат
@@ -65,7 +125,7 @@ public class MessageService {
             throw new IllegalArgumentException("Текст сообщения не может быть пустым");
         }
         // Проверяем, что сообщение — это JSON с полями iv и ciphertext (E2EE)
-        boolean isCiphertext = false;
+        boolean isCiphertext;
         try {
             var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(content);
             isCiphertext = json.has("iv") && json.has("ciphertext");
@@ -108,106 +168,6 @@ public class MessageService {
         notifyAboutNewMessage(savedMessage);
 
         return convertToDto(savedMessage);
-    }
-
-    /**
-     * Получить сообщения чата
-     */
-    @Transactional(readOnly = true)
-    public List<MessageDto> getChatMessages(Long chatId, Long userId, int page, int size) {
-        // Сначала проверяем, является ли пользователь участником чата
-        if (!chatRepository.isUserParticipant(chatId, userId)) {
-            throw new IllegalArgumentException("У вас нет доступа к этому чату");
-        }
-
-        // Проверяем существование чата
-        if (!chatRepository.existsById(chatId)) {
-            throw new RuntimeException("Чат не найден");
-        }
-
-        Pageable pageable = PageRequest.of(page, size);
-        // Используем оптимизированный запрос с предварительной загрузкой отправителей
-        List<Message> messages = messageRepository.findByChatIdOrderByCreatedAtDescWithSender(chatId, pageable);
-
-        return convertToDtoWithBatchReadStatuses(messages, userId);
-    }
-
-    /**
-     * Конвертировать список сообщений в DTO с batch-загрузкой статусов прочтения
-     */
-    private List<MessageDto> convertToDtoWithBatchReadStatuses(List<Message> messages, Long currentUserId) {
-        if (messages.isEmpty()) {
-            return List.of();
-        }
-
-        // Собираем ID всех сообщений
-        List<Long> messageIds = messages.stream()
-            .map(Message::getId)
-            .collect(Collectors.toList());
-
-        // Batch-загрузка всех статусов прочтения одним запросом
-        List<MessageReadStatus> allReadStatuses = messageReadStatusRepository.findByMessageIdIn(messageIds);
-
-        // Группируем статусы по message_id
-        Map<Long, List<MessageReadStatus>> statusesByMessageId = allReadStatuses.stream()
-            .collect(Collectors.groupingBy(mrs -> mrs.getMessage().getId()));
-
-        // Конвертируем сообщения в DTO с предзагруженными статусами
-        return messages.stream()
-            .map(message -> {
-                List<MessageReadStatus> messageStatuses = statusesByMessageId.getOrDefault(message.getId(), List.of());
-                return convertToDtoWithPreloadedStatuses(message, currentUserId, messageStatuses);
-            })
-            .collect(Collectors.toList());
-    }
-
-    /**
-     * Конвертировать Message в MessageDto с предзагруженными статусами
-     */
-    private MessageDto convertToDtoWithPreloadedStatuses(Message message, Long currentUserId, List<MessageReadStatus> readStatuses) {
-        MessageDto dto = new MessageDto();
-        dto.setId(message.getId());
-        dto.setContent(message.getContent());
-        dto.setMessageType(message.getMessageType());
-        dto.setIsEdited(message.getIsEdited());
-        dto.setCreatedAt(message.getCreatedAt());
-        dto.setUpdatedAt(message.getUpdatedAt());
-        dto.setChatId(message.getChat() != null ? message.getChat().getId() : null);
-
-        // Добавляем поля файлов
-        dto.setFileUrl(message.getFileUrl());
-        dto.setFileName(message.getFileName());
-        dto.setFileSize(message.getFileSize());
-        dto.setMimeType(message.getMimeType());
-        dto.setThumbnailUrl(message.getThumbnailUrl());
-
-        if (message.getSender() != null) {
-            dto.setSender(userService.convertToDto(message.getSender()));
-        }
-
-        if (message.getReplyToMessage() != null) {
-            dto.setReplyToMessage(convertToDto(message.getReplyToMessage()));
-        }
-
-        // Используем предзагруженные статусы прочтения
-        dto.setReadCount(readStatuses.size());
-
-        if (currentUserId != null) {
-            // Проверяем, прочитано ли сообщение текущим пользователем
-            readStatuses.stream()
-                .filter(rs -> rs.getUser().getId().equals(currentUserId))
-                .findFirst()
-                .ifPresent(status -> {
-                    dto.setIsReadByCurrentUser(true);
-                    dto.setReadAt(status.getReadAt());
-                });
-
-            if (dto.getReadAt() == null) {
-                dto.setIsReadByCurrentUser(false);
-            }
-        }
-
-        return dto;
     }
 
     /**

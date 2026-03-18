@@ -2,13 +2,14 @@ package com.messenger.core.controller;
 
 import com.messenger.core.dto.MessageDto;
 import com.messenger.core.dto.MessageReadStatusDto;
-import com.messenger.core.service.MessageService;
-import com.messenger.core.service.OptimizedDataService;
-import com.messenger.core.config.JwtAuthenticationFilter;
+import com.messenger.core.service.message.MessageService;
+import com.messenger.core.service.user.UserContextResolver;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import jakarta.servlet.http.HttpServletRequest;
+
 import java.util.List;
 
 @RestController
@@ -17,8 +18,13 @@ import java.util.List;
 public class MessageController {
 
     private final MessageService messageService;
-    private final OptimizedDataService optimizedDataService;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final UserContextResolver userContextResolver;
+
+    @Value("${app.messages.default-page-size}")
+    private int defaultPageSize;
+
+    @Value("${app.messages.default-search-page-size}")
+    private int defaultSearchPageSize;
 
     /**
      * Отправить сообщение в чат
@@ -33,17 +39,17 @@ public class MessageController {
     }
 
     /**
-     * Получить сообщения чата (оптимизированная версия)
+     * Получить сообщения чата
      */
     @GetMapping("/chat/{chatId}")
     public ResponseEntity<List<MessageDto>> getChatMessages(
             @PathVariable Long chatId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) Integer size,
             HttpServletRequest request) {
         Long userId = getCurrentUserId(request);
-        // Используем оптимизированный сервис для минимизации запросов к БД
-        List<MessageDto> messages = optimizedDataService.getOptimizedChatMessages(chatId, userId, page, size);
+        List<MessageDto> messages = messageService.getChatMessages(
+                chatId, userId, page, size != null ? size : defaultPageSize);
         return ResponseEntity.ok(messages);
     }
 
@@ -80,10 +86,11 @@ public class MessageController {
             @PathVariable Long chatId,
             @RequestParam String query,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Integer size,
             HttpServletRequest request) {
         Long userId = getCurrentUserId(request);
-        List<MessageDto> messages = messageService.searchMessagesInChat(chatId, userId, query, page, size);
+        List<MessageDto> messages = messageService.searchMessagesInChat(
+                chatId, userId, query, page, size != null ? size : defaultSearchPageSize);
         return ResponseEntity.ok(messages);
     }
 
@@ -139,28 +146,6 @@ public class MessageController {
      * Получить ID текущего пользователя из заголовков Gateway
      */
     private Long getCurrentUserId(HttpServletRequest request) {
-        // Сначала пробуем получить из заголовков Gateway
-        String userIdHeader = request.getHeader("X-User-Id");
-        if (userIdHeader != null && !userIdHeader.isEmpty()) {
-            try {
-                return Long.parseLong(userIdHeader);
-            } catch (NumberFormatException e) {
-                throw new RuntimeException("Неверный формат ID пользователя в заголовке: " + userIdHeader);
-            }
-        }
-
-        // Если заголовка нет, пробуем через JWT фильтр (fallback)
-        Long userId = null;
-        try {
-            userId = jwtAuthenticationFilter.getUserIdFromRequest(request);
-        } catch (Exception e) {
-            // Игнорируем ошибку JWT фильтра, если есть заголовки Gateway
-        }
-
-        if (userId == null) {
-            throw new RuntimeException("Пользователь не аутентифицирован - отсутствуют данные авторизации");
-        }
-
-        return userId;
+        return userContextResolver.resolveUserId(request);
     }
 }

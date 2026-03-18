@@ -2,8 +2,7 @@ package com.messenger.core.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.messenger.core.dto.MessageDto;
-import com.messenger.core.model.Message;
-import com.messenger.core.service.MessageService;
+import com.messenger.core.service.message.MessageService;
 import com.messenger.core.service.OptimizedDataService;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;

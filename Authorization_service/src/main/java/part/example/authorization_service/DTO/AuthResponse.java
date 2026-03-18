@@ -1,16 +1,13 @@
 package part.example.authorization_service.DTO;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+/**
+ * Ответ с JWT-токеном после успешной аутентификации.
+ */
+@Getter
+@AllArgsConstructor
 public class AuthResponse {
-
-    private String token;
-
-    public AuthResponse(String token) {
-        this.token = token;
-    }
-
-    public String getToken() {
-        return token;
-    }
-
-
+    private final String token;
 }

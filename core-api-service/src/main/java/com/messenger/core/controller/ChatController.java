@@ -1,14 +1,13 @@
 package com.messenger.core.controller;
 
 import com.messenger.core.dto.ChatDto;
-import com.messenger.core.service.ChatService;
+import com.messenger.core.service.chat.ChatService;
 import com.messenger.core.service.OptimizedDataService;
-import com.messenger.core.config.JwtAuthenticationFilter;
+import com.messenger.core.service.user.UserContextResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.http.HttpStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 
@@ -20,7 +19,7 @@ public class ChatController {
 
     private final ChatService chatService;
     private final OptimizedDataService optimizedDataService;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final UserContextResolver userContextResolver;
 
     /**
      * Получить все чаты пользователя (оптимизированная версия)
@@ -151,43 +150,6 @@ public class ChatController {
      * Получить ID текущего пользователя из заголовков Gateway
      */
     private Long getCurrentUserId(HttpServletRequest request) {
-        // Сначала пробуем получить из заголовков Gateway
-        String userIdHeader = request.getHeader("X-User-Id");
-        if (userIdHeader != null && !userIdHeader.isEmpty()) {
-            try {
-                return Long.parseLong(userIdHeader);
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Неверный формат ID пользователя в заголовке: " + userIdHeader);
-            }
-        }
-
-        // Если заголовка нет, пробуем через JWT фильтр
-        Long userId = null;
-        try {
-            userId = jwtAuthenticationFilter.getUserIdFromRequest(request);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Ошибка авторизации: " + e.getMessage(), e);
-        }
-
-        if (userId == null) {
-            throw new IllegalArgumentException("Пользователь не аутентифицирован - отсутствуют данные авторизации");
-        }
-
-        return userId;
-    }
-
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<?> handleRuntimeException(RuntimeException ex) {
-        if ("Chat not found".equals(ex.getMessage())) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Chat not found");
-        }
-        if (ex instanceof IllegalArgumentException) {
-            String msg = ex.getMessage();
-            if (msg != null && (msg.contains("Ошибка авторизации") || msg.contains("Пользователь не аутентифицирован"))) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(msg);
-            }
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(msg);
-        }
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Internal error");
+        return userContextResolver.resolveUserId(request);
     }
 }
